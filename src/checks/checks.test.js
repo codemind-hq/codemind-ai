@@ -4,6 +4,7 @@ import {
   certificationClaims,
   factSources,
   figureClaims,
+  inflatedTenure,
   normalizeNumber,
   resumeWarnings,
   sourcedCertifications,
@@ -72,6 +73,18 @@ test('the years a resume supports are what it states, or its dated span plus one
   assert.equal(supportedYears(form(['2022 – 2024'], 'Engineer with 10 years of experience.'), { now }), 10, 'what the source states stands');
   assert.equal(supportedYears(form(['2022 – 2024'], 'Over a decade of experience.'), { now }), null, 'unreadable: the check stays silent (ai-job-hunter)');
   assert.equal(supportedYears(form([]), { now }), null);
+});
+
+test('"decades" in a bullet about something else does not switch the tenure check off', () => {
+  const now = new Date('2026-06-01');
+  const form = (achievement, summary = '') => ({ summary, experience: [{ period: '2022 – Present', achievements: [achievement] }] });
+  const claim = 'Backend engineer with 15 years of experience';
+  for (const bullet of ['Indexed decades of archived documents for search', 'Kept the billing service running for several years of sales']) {
+    const years = supportedYears(form(bullet), { now });
+    assert.equal(years, 5, bullet);
+    assert.equal(inflatedTenure(claim, years).length, 1, `${bullet}: an invented tenure is still caught`);
+  }
+  assert.equal(supportedYears(form('Built an API', 'Engineer with several years of experience.'), { now }), null, 'a stated unreadable tenure still stays silent');
 });
 
 test('certifications are compared on the issuer, generously on the source side (ai-job-hunter)', () => {

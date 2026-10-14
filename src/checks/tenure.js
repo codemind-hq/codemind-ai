@@ -19,9 +19,22 @@ const MAX_TENURE = 60;
 const SPAN_SLACK_YEARS = 1;
 const PRESENT_RE = /\b(present|current(?:ly)?|now|today|ongoing)\b/i;
 // A tenure stated in a way no number can be read from; the check then says nothing.
-const UNREADABLE_TENURE_RE = /\b(decades?|over a decade|many years|several years)\b/i;
+const UNREADABLE_TENURE_RE = /\b(decades?|over a decade|many years|several years)\b/gi;
 
 const yearsValue = (raw) => (/^\d+$/.test(raw) ? Number(raw) : SPELLED[raw.toLowerCase()]);
+
+/**
+ * Whether `text` states a tenure in words no number can be read from. The phrase has to sit in
+ * career wording, as a claimed "N years" does: "Indexed decades of archived documents" is not a
+ * tenure, and must not switch the check off for the whole resume.
+ */
+function statesUnreadableTenure(text) {
+  for (const m of text.matchAll(UNREADABLE_TENURE_RE)) {
+    const around = text.slice(Math.max(0, m.index - CONTEXT_CHARS), m.index + m[0].length + CONTEXT_CHARS);
+    if (EXPERIENCE_CONTEXT.test(around) || ROLE_LEAD_IN.test(text.slice(0, m.index))) return true;
+  }
+  return false;
+}
 
 /** The tenures `text` claims for the candidate: every "N years" with career wording within reach. */
 export function tenureClaims(text) {
@@ -43,7 +56,7 @@ export function tenureClaims(text) {
  */
 export function supportedYears(form, { now = new Date() } = {}) {
   const text = [form?.summary, form?.title, ...(form?.experience || []).flatMap((e) => [e.period, ...(e.achievements || [])])].filter(Boolean).join('\n');
-  if (UNREADABLE_TENURE_RE.test(text)) return null;
+  if (statesUnreadableTenure(text)) return null;
   let stated = 0;
   for (const m of text.matchAll(YEARS_RE)) stated = Math.max(stated, yearsValue(m[1]) || 0);
 
