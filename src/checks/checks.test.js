@@ -85,6 +85,10 @@ test('"decades" in a bullet about something else does not switch the tenure chec
     assert.equal(inflatedTenure(claim, years).length, 1, `${bullet}: an invented tenure is still caught`);
   }
   assert.equal(supportedYears(form('Built an API', 'Engineer with several years of experience.'), { now }), null, 'a stated unreadable tenure still stays silent');
+  for (const summary of ['Two decades in fintech and payments.', 'Over a decade building trading systems.', 'Many years in embedded C.']) {
+    assert.equal(supportedYears(form('Built an API', summary), { now }), null, `${summary}: a summary tenure needs no career word`);
+  }
+  assert.equal(supportedYears(form('Led the platform team after a decade of experience in payments'), { now }), null, 'a bullet in career wording still counts');
 });
 
 test('certifications are compared on the issuer, generously on the source side (ai-job-hunter)', () => {
