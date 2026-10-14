@@ -1233,6 +1233,29 @@ test("score first writes in at most eight required terms, a requirement's own fi
   assert.deepEqual(splitAssumedTerms(['Jest'], {}), { assumed: [], optional: ['Jest'], leftOut: [] }, 'with no job or score nothing is required');
 });
 
+test('credential and clearance checks do not drop ordinary engineering lines that reuse those words', async () => {
+  const { claimsClearance, claimsCredential } = await import('./index.js');
+  for (const line of [
+    'Integrated Visa and Mastercard payments for 40k users.',
+    'Rotated TLS certificates with cert-manager.',
+    'Built 360-degree feedback dashboards.',
+    'Built a license key validation service.',
+    'Tracked conference sponsorship leads in a CRM.',
+    'Shipped a citizen-facing permits portal.',
+    'Automated eligibility for benefits checks.',
+    'Open sourced a library licensed under MIT.',
+  ]) {
+    assert.equal(claimsCredential(line), false, `credential: ${line}`);
+    assert.equal(claimsClearance(line), false, `clearance: ${line}`);
+  }
+  for (const line of ['Completed an Azure certification.', "Holds a bachelor's degree.", 'Licensed CPA.']) {
+    assert.equal(claimsCredential(line), true, line);
+  }
+  for (const line of ['Must be a US citizen.', 'Requires visa sponsorship.', 'No sponsorship available.', 'Valid work visa.']) {
+    assert.equal(claimsClearance(line), true, line);
+  }
+});
+
 test('a clearance is never written: not as a gap, not as a line for any gap, not as an added bullet', async () => {
   const { applyGapLines, buildGapPrompt, claimsClearance } = await import('./index.js');
   assert.equal(claimsClearance('Eligible to obtain a DoD Secret clearance based on experience supporting production services.'), true);
