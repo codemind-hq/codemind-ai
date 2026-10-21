@@ -5,6 +5,7 @@ import { complete } from '../llm/index.js';
 import { tailorEffort, withFallback } from '../llm/routing.js';
 import { applyGapLines, applyRepairs, buildGapPrompt, buildRepairPrompt, buildTailorPrompt, postingTerms, repairTargets, splitJobKeywords, tailoredResumeForm, tailorStyle } from './index.js';
 import { GAP_RESPONSE_FORMAT, REPAIR_RESPONSE_FORMAT, TAILOR_RESPONSE_FORMAT } from './schema.js';
+import { isExecutionStopped, safeErrorDetails } from '../llm/errors.js';
 
 // The tailoring calls: the rewrite, its repair round, and the gap pass.
 
@@ -23,7 +24,7 @@ import { GAP_RESPONSE_FORMAT, REPAIR_RESPONSE_FORMAT, TAILOR_RESPONSE_FORMAT } f
  * @param {import('../types.js').ResumeForm} form
  * @param {import('../types.js').Job} job
  * @param {{ scoring?: import('../types.js').Scoring | null, confirmedKeywords?: string[] | null, assumedKeywords?: string[], optionalKeywords?: string[], evidence?: object[], blockedKeywords?: string[], instructions?: string, style?: import('../types.js').TailorStyle, model: string, meta?: import('../types.js').CallMeta }} [options]
- * @returns {Promise<{ form: import('../types.js').ResumeForm, changes: object[], droppedSkills: string[], estimates: object[], missingKeywords: string[], matchedKeywords: string[], suggestions: string[], promptVersion: string }>}
+ * @returns {Promise<{ form: import('../types.js').ResumeForm, changes: object[], droppedSkills: string[], estimates: object[], missingKeywords: string[], matchedKeywords: string[], suggestions: string[], promptVersion: string, warnings: object[] }>}
  */
 export async function tailorResumeForm(
   form,
@@ -67,6 +68,7 @@ export async function tailorResumeForm(
         changes: final.changes,
         droppedSkills: final.droppedSkills || [],
         estimates: final.estimates || [],
+        warnings: final.warnings || [],
         ...splitJobKeywords(data.jobKeywords, sourceText),
         suggestions: Array.isArray(data.suggestions) ? data.suggestions.filter((t) => typeof t === 'string' && t.trim()) : [],
         promptVersion: PROMPT_VERSIONS.tailor,
@@ -101,6 +103,7 @@ export async function fillTailoringGaps(tailored, form, job, { scoring, confirme
   const requirements = Array.isArray(job?.requirements) ? job.requirements : [];
   const options = { confirmedKeywords, evidence, assumedKeywords, protectedKeywords, requirements, description: job?.description || '', style };
   let merged = applyGapLines(tailored, form, data, options);
+  const warnings = [...(tailored.warnings || [])];
   // A line refused for repeating the posting's wording is usually the right work in the
   // requirement's own phrase (the main refusal left on three prod cases once the figure and
   // length ones were fixed): one repair call rewords those lines, and the ones that come back
@@ -124,11 +127,13 @@ export async function fillTailoringGaps(tailored, form, job, { scoring, confirme
         const again = applyGapLines({ ...tailored, form: merged.form, changes: merged.changes, estimates: merged.estimates }, form, { lines: reworded }, options);
         merged = { ...again, applied: merged.applied + again.applied, rejected: [...merged.rejected.filter((r) => !copied.includes(r)), ...again.rejected] };
       }
-    } catch {
+    } catch (err) {
+      if (isExecutionStopped(err)) throw err;
+      warnings.push({ stage: 'gap_repair', code: safeErrorDetails(err).category });
       // the lines stay out
     }
   }
-  return { ...tailored, form: merged.form, changes: merged.changes, estimates: merged.estimates, applied: merged.applied, rejected: merged.rejected };
+  return { ...tailored, form: merged.form, changes: merged.changes, estimates: merged.estimates, applied: merged.applied, rejected: merged.rejected, warnings };
 }
 
 /**
@@ -150,7 +155,8 @@ async function repairTailoring({ tailored, source, job, model, reasoningEffort, 
     );
     const repaired = applyRepairs(tailored, targets, data, { protectedKeywords, requirements, description, style });
     return repaired.repaired ? { ...tailored, form: repaired.form, changes: repaired.changes } : tailored;
-  } catch {
-    return tailored;
+  } catch (err) {
+    if (isExecutionStopped(err)) throw err;
+    return { ...tailored, warnings: [...(tailored.warnings || []), { stage: 'repair', code: safeErrorDetails(err).category }] };
   }
 }

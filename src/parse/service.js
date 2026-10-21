@@ -4,6 +4,7 @@ import { complete } from '../llm/index.js';
 import { withFallback } from '../llm/routing.js';
 import { models } from '../runtime.js';
 import { PARSE_RESUME_RESPONSE_FORMAT } from './schema.js';
+import { cleanStructuredResume } from '../resume/structuredResume.js';
 
 // Reading an uploaded resume into the structured form.
 
@@ -37,6 +38,8 @@ const parseResumeTries = () => {
  * @returns {Promise<import('../types.js').ResumeForm>} The model's reading, for the caller to clean.
  */
 export async function parseResumeText(resumeText, meta = {}) {
+  // Validate before entering the fallback loop so bad input never spends a model call.
+  if (typeof resumeText !== 'string' || !resumeText.trim()) throw AiError.badRequest('Resume text is required');
   return withFallback(async ({ model, reasoningEffort }) => {
     const { data } = await complete(
       {
@@ -53,6 +56,12 @@ ${resumeText.slice(0, 20000)}`,
       { ...meta, kind: 'resume_parse', promptVersion: PROMPT_VERSIONS.parseResume }
     );
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw AiError.upstream('The model did not return a resume');
+    // Cleaning removes malformed fields. Require some usable content without requiring
+    // contact details, since anonymized resumes are valid inputs too.
+    const cleaned = cleanStructuredResume(data);
+    if (!Object.values(cleaned).some((value) => typeof value === 'string' ? value.trim() : Array.isArray(value) && value.length)) {
+      throw AiError.upstream('The model did not return usable resume content');
+    }
     return data;
   }, parseResumeTries());
 }

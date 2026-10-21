@@ -1,5 +1,6 @@
 import { providerOf } from './providers.js';
 import { log as runtimeLog, models } from '../runtime.js';
+import { isExecutionStopped, safeErrorDetails } from './errors.js';
 
 // How a call falls back, and at what effort tailoring runs. Which model a feature uses comes from
 // the app (createCodemind's `models`): scoring's ats model with a one-shot fallback, resume parsing's
@@ -15,8 +16,8 @@ export async function withFallback(call, tries, log = runtimeLog()) {
   try {
     return await call(model);
   } catch (err) {
-    if (!fallbackModel || fallbackModel === model) throw err;
-    log.warn({ model, fallbackModel, err: err.message }, 'AI call failed, trying the fallback');
+    if (isExecutionStopped(err) || !fallbackModel || fallbackModel === model) throw err;
+    log.warn({ model, fallbackModel, ...safeErrorDetails(err) }, 'AI call failed, trying the fallback');
     return call(fallbackModel);
   }
 }

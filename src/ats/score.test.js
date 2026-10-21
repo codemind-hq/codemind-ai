@@ -75,7 +75,7 @@ test('a years requirement is capped by the years the resume supports', () => {
   assert.equal(yearsCap('5 years of Go', null), 'met', 'unknown support, no cap');
 });
 
-test('the model\'s verdicts are checked: a quote not in the resume drops a level, and years are capped', () => {
+test('the model\'s verdicts are checked: a quote not in the resume earns no credit, and years are capped', () => {
   const { text } = resumeForModel(form);
   const verdicts = checkedVerdicts(
     REQUIREMENTS,
@@ -89,7 +89,9 @@ test('the model\'s verdicts are checked: a quote not in the resume drops a level
     },
     { resumeText: text, supportedYears: 1 }
   );
-  assert.deepEqual(verdicts.map((v) => v.verdict), ['missing', 'weak', 'missing', 'missing'], 'years cap; a made-up quote; an unanswered one');
+  // The fabricated payments quote used to earn weak (half) credit; it now earns none.
+  assert.deepEqual(verdicts.map((v) => v.verdict), ['missing', 'missing', 'missing', 'missing'], 'years cap; a made-up quote; an unanswered one');
+  assert.equal(verdicts[1].quote, '');
   assert.equal(verdicts[2].quote, '');
 });
 

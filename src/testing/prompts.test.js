@@ -212,6 +212,9 @@ test('enrich: a posting read three times when no answer passes, the retries told
   snapshot('enrich');
 });
 
+// The scripted scorer quotes a source sentence removed by the rewrite. Rejecting that
+// evidence lowers the snapshot's after-scores and changes gap verdicts from weak to missing;
+// the prompt instructions, model settings and generated resume bullets stay the same.
 test('the tailoring pipeline: scored, rewritten, rescored, and the gap passes of each mode', async () => {
   let scores = 0;
   llm = installFakeLlm((request) => {

@@ -3,6 +3,10 @@ import { hasKeyword, keywordList, sameKeyword, uniqueKeywords } from '../text/ke
 import { structuredResumeToText } from '../resume/structuredResume.js';
 import { fillTailoringGaps, tailorResumeForm } from './service.js';
 import { postingTerms, splitAssumedTerms, tailorMode, tailorStyle, withoutCuts } from './index.js';
+import { AiError } from '../errors.js';
+import { executionSignal } from '../llm/execution.js';
+import { isExecutionStopped, safeErrorDetails } from '../llm/errors.js';
+import { enforceConfirmation } from './confirmation.js';
 
 // The whole tailoring of one resume for one job, as the calls run it: the source scored (unless
 // a score is handed in), the rewrite, the rewrite scored against the source's own verdicts, the
@@ -31,10 +35,13 @@ export function gapPassProgressed(prior, next) {
  * they said about them ([{ keyword, role, note }]). `assumedKeywords` are missing keywords they
  * neither confirmed nor declined, `declinedKeywords` the ones they switched off. `style` is how far
  * the rewrite goes (style.js); `instructions` the user's own notes; `model` the tailoring model.
- * Returns { before, after, tailored, style, confirmed, candidates, assumed, assumedAll, split }.
+ * `requireConfirmedKeywords` blocks known new job terms unless confirmed (default false).
+ * `timeoutMs` is a shared workflow budget; `meta.signal` supports cancellation.
+ * `completion` reports optional-stage failures, while `review` identifies unconfirmed terms
+ * and estimated figures for the host's review UI. Neither automatically approves an export.
  *
- * @param {{ form: import('../types.js').ResumeForm, originalText: string, job: import('../types.js').Job, scoring?: import('../types.js').Scoring | null, confirmedKeywords?: string[] | null, assumedKeywords?: string[], declinedKeywords?: string[], evidence?: object[], style?: import('../types.js').TailorStyle, instructions?: string, model: string, meta?: import('../types.js').CallMeta }} input
- * @returns {Promise<{ before: import('../types.js').Scoring, after: import('../types.js').Scoring, tailored: object, style: import('../types.js').TailorStyle, confirmed: string[], candidates: string[], assumed: string[], assumedAll: string[], split: object }>}
+ * @param {{ form: import('../types.js').ResumeForm, originalText: string, job: import('../types.js').Job, scoring?: import('../types.js').Scoring | null, confirmedKeywords?: string[] | null, assumedKeywords?: string[], declinedKeywords?: string[], evidence?: object[], style?: import('../types.js').TailorStyle, instructions?: string, model: string, meta?: import('../types.js').CallMeta, requireConfirmedKeywords?: boolean, timeoutMs?: number }} input
+ * @returns {Promise<{ before: import('../types.js').Scoring, after: import('../types.js').Scoring, tailored: object, style: import('../types.js').TailorStyle, confirmed: string[], candidates: string[], assumed: string[], assumedAll: string[], split: object, completion: import('../types.js').TailoringCompletion, review: import('../types.js').TailoringReview }>}
  */
 export async function runTailoring({
   form,
@@ -49,7 +56,14 @@ export async function runTailoring({
   instructions = '',
   model,
   meta = {},
+  requireConfirmedKeywords = false,
+  timeoutMs,
 }) {
+  if (timeoutMs !== undefined) {
+    if (!Number.isInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2 ** 31 - 1) throw AiError.badRequest('timeoutMs must be a positive integer no greater than 2147483647');
+    meta = { ...meta, deadlineAt: Math.min(meta.deadlineAt ?? Infinity, Date.now() + timeoutMs) };
+  }
+  executionSignal(meta); // Reject cancelled/expired requests before even using a cached score.
   const before = scoring || (await quickScoreResume(form, job, meta));
 
   // Every keyword the rewrite could be tempted to add. Asked and not confirmed means blocked.
@@ -69,7 +83,8 @@ export async function runTailoring({
   // out is offered to nobody: twenty resumes read by another grader lost their realism exactly
   // where fourteen or more terms went in, for a tenth of the score. What is not a skill's name
   // ("GitCI/CD?") is never written in.
-  const split = splitAssumedTerms(missing, { job, scoring: before, max: mode.maxAssumedTerms });
+  // Confirmation-only mode leaves unknown terms open instead of offering them as assumptions.
+  const split = requireConfirmedKeywords ? { assumed: [], optional: [], leftOut: missing } : splitAssumedTerms(missing, { job, scoring: before, max: mode.maxAssumedTerms });
   // Score first forces the nice-to-haves in as well, after the required terms and within the
   // same cap: the job's preferred skills are a tenth of the score (ats/breakdown.js), and a
   // resume that names none of them tops out around 85 whatever else it says.
@@ -78,12 +93,13 @@ export async function runTailoring({
   const optional = split.optional.filter((k) => !forced.some((f) => sameKeyword(f, k)));
   const assumedAll = [...assumed, ...optional];
   const allowed = [...confirmed, ...assumedAll];
-  const blockedKeywords = Array.isArray(confirmedKeywords)
-    ? candidates.filter((k) => !hasKeyword(originalText, k) && !allowed.some((c) => sameKeyword(c, k)))
+  const blockedKeywords = requireConfirmedKeywords || Array.isArray(confirmedKeywords)
+    ? uniqueKeywords(requireConfirmedKeywords ? [...candidates, ...missing] : candidates).filter((k) => !hasKeyword(originalText, k) && !allowed.some((c) => sameKeyword(c, k)))
     : [];
 
-  const request = { confirmedKeywords, blockedKeywords, evidence, style, instructions, model, meta };
+  const request = { confirmedKeywords: requireConfirmedKeywords ? confirmed : confirmedKeywords, blockedKeywords, evidence, style, instructions, model, meta };
   let tailored = await tailorResumeForm(form, job, { ...request, scoring: before, assumedKeywords: assumed, optionalKeywords: optional });
+  if (requireConfirmedKeywords) tailored = enforceConfirmation(tailored, form, blockedKeywords);
 
   // The rewrite is judged against the source's own verdicts, so its score moves only for what it changed.
   const beforeRequirements = typeof before.toObject === 'function' ? before.toObject().requirements : before.requirements;
@@ -111,9 +127,12 @@ export async function runTailoring({
   // when nothing goes in, or when the score does not rise more often than the mode tolerates
   // (score first rolls once more after a flat pass; the others stop).
   let flat = 0;
+  const warnings = [];
+  let gapPassesAttempted = 0;
   for (let pass = 0; after.score < mode.target && pass < mode.gapPasses; pass += 1) {
     try {
-      const filled = await fillTailoringGaps(tailored, form, job, {
+      gapPassesAttempted += 1;
+      let filled = await fillTailoringGaps(tailored, form, job, {
         scoring: after,
         confirmedKeywords: confirmed,
         evidence,
@@ -123,6 +142,8 @@ export async function runTailoring({
         model: request.model,
         meta,
       });
+      if (requireConfirmedKeywords) filled = enforceConfirmation(filled, form, blockedKeywords);
+      warnings.push(...(filled.warnings || []).filter((warning) => !(tailored.warnings || []).includes(warning)));
       if (!filled.applied) break;
       const rescored = await quickScoreResume(filled.form, job, meta, { prior });
       if (!gapPassProgressed(after, rescored)) {
@@ -131,10 +152,19 @@ export async function runTailoring({
         continue;
       }
       [tailored, after] = [filled, rescored];
-    } catch {
+    } catch (err) {
+      if (isExecutionStopped(err)) throw err;
+      warnings.push({ stage: 'gap', code: safeErrorDetails(err).category });
       break; // the attempt so far stands
     }
   }
 
-  return { before, after, tailored, style, confirmed, candidates, assumed, assumedAll, split };
+  const finalWarnings = [...new Set([...(tailored.warnings || []), ...warnings])];
+  const text = structuredResumeToText(tailored.form);
+  const unconfirmed = uniqueKeywords([...candidates, ...assumedAll]).filter((term) => !hasKeyword(originalText, term) && !confirmed.some((k) => sameKeyword(k, term)) && hasKeyword(text, term));
+  return {
+    before, after, tailored, style, confirmed, candidates, assumed, assumedAll, split,
+    completion: { status: finalWarnings.length ? 'partial' : 'complete', warnings: finalWarnings, gapPassesAttempted, targetReached: after.score >= mode.target },
+    review: { required: unconfirmed.length > 0 || Boolean(tailored.estimates?.length), unconfirmedKeywords: unconfirmed, estimates: tailored.estimates || [] },
+  };
 }

@@ -17,7 +17,9 @@ export function verifiedSkills(job, resumeText) {
 
 /** A matched keyword the resume does not contain is a fabrication; keep only the verbatim ones. */
 export function filterMatchedKeywords(keywords, resumeText) {
-  return (keywords || []).filter((k) => typeof k === 'string' && hasKeyword(resumeText, k));
+  // Providers can return valid JSON with a string or object where an array was requested.
+  // Ignore that field so otherwise valid scoring evidence does not trigger a fallback call.
+  return (Array.isArray(keywords) ? keywords : []).filter((k) => typeof k === 'string' && hasKeyword(resumeText, k));
 }
 
 /**

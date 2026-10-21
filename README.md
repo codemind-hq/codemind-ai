@@ -80,6 +80,66 @@ console.log(score.score, score.requirements);
 
 ## How it is tested
 
+### Request cancellation and tailoring review
+
+Completion-based feature calls accept `meta.signal` (an `AbortSignal`) and `meta.deadlineAt` (an absolute Unix
+timestamp in milliseconds). The deadline is shared across retries, fallbacks and model calls;
+cancelled or expired requests throw `AiError` codes `ai_cancelled` or `ai_timeout` without trying
+another model. Normal provider timeouts and retry settings remain in effect when these are absent.
+Deadlines must be within the next 2,147,483,647 milliseconds (the timer limit).
+These controls bound completion requests and retry waits; Batch API submission/polling is
+separate. Injected usage callbacks should complete promptly. An injected client that ignores
+the signal may continue its own work after this package stops waiting for it.
+
+`runTailoring()` also accepts a positive integer `timeoutMs`, which sets a workflow-wide deadline:
+
+```js
+const controller = new AbortController();
+const result = await ai.runTailoring({
+  form: resumeForm,
+  originalText: resumeText,
+  job,
+  model: 'gpt-4o-mini',
+  timeoutMs: 120_000,
+  meta: { signal: controller.signal },
+  requireConfirmedKeywords: true,
+  confirmedKeywords: ['Kubernetes'], // Only after the candidate confirms it.
+});
+// controller.abort() can be called by a cancel action while this operation is running.
+console.log(result.completion.status, result.completion.warnings);
+console.log(result.review.required, result.review.unconfirmedKeywords, result.review.estimates);
+```
+
+Confirmation-only mode is opt-in and applies to the full `runTailoring()` workflow. It leaves
+known missing job terms unfilled unless confirmed, and conservatively restores source sections
+if a model or repair introduces a blocked term. This may discard valid edits in that section.
+It is not a general semantic truth checker and does not apply automatically to direct calls to
+`tailorResumeForm()` or `fillTailoringGaps()`. Estimated figures still require review.
+
+Every pipeline result includes `completion` and `review`. A `partial` status means an optional
+stage failed or a confirmation guard restored a section; the last accepted result is retained.
+`complete` does not mean the target score was reached—check `targetReached`. A host should show
+warnings, let users inspect assumptions and estimates, and require their review before export.
+These are integration hooks; the frontend and its export controls are outside this repository.
+
+Provider errors in logs and failure usage events now use stable diagnostic categories rather
+than raw provider messages. Rejected responses retain provider-reported tokens and costs.
+An aborted request without a returned usage payload still cannot report the provider's actual
+billable usage; zero tokens in that case does not establish that the provider charged nothing.
+
+### Synthetic evidence evaluation
+
+```bash
+node src/testing/evaluateEvidence.js
+```
+
+This diagnostic uses four labeled cases and no API calls. It reports the current checks'
+results, including the known limitation that an authentic but irrelevant quote can earn credit.
+It exits successfully after reporting results, not as a passing semantic-quality gate. No live
+model accuracy or performance improvement is inferred from this small dataset.
+
+### Unit tests and prompt snapshots
+
 `src/testing/prompts.test.js` runs every feature through the real `complete()` against a scripted
 model. It pins each request in `src/testing/snapshots/*.txt`: the messages, model, settings,
 response schema and how the call is metered. A refactor that changes any prompt shows up as a

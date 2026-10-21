@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { AiError } from '../errors.js';
 
 // What a failed call means: worth another try, the flex tier full, or an account out of credits.
 
@@ -28,3 +29,18 @@ export function isOutOfCredits(err) {
     /no credits remaining|exceeded your current quota|arrearage|overdue payment/i.test(err?.message || '')
   );
 }
+
+/** Stable, non-sensitive diagnostics: provider messages and error objects can echo input. */
+export function safeErrorDetails(err) {
+  const status = err?.status || err?.statusCode;
+  const category = isExecutionStopped(err) ? err.code
+    : isOutOfCredits(err) ? 'no_credits'
+      : isFlexUnavailable(err) ? 'flex_unavailable'
+        : status === 401 ? 'authentication'
+          : isTransient(err) ? 'transient'
+            : err instanceof AiError ? 'invalid_response' : 'upstream_failed';
+  return { ...(Number.isInteger(status) && status >= 100 && status <= 599 ? { status } : {}), category };
+}
+
+/** Cancellation and deadlines are terminal, including inside feature fallback/repair loops. */
+export const isExecutionStopped = (err) => err instanceof AiError && ['ai_cancelled', 'ai_timeout'].includes(err.code);

@@ -13,12 +13,14 @@ import { JOB_REQUIREMENTS_RESPONSE_FORMAT, SCORE_RESPONSE_FORMAT } from './schem
 // The scoring calls: a posting's requirements read once, and a resume judged against them.
 
 /**
- * What a cached score was produced by: the prompt version and the model. Stored on every
- * match row and compared on read, so a prompt or model change never serves an old-scale
- * number next to a new one.
+ * What a cached score was produced by: the prompt version, model and grounding revision.
+ * Stored on every match row and compared on read, so a prompt, model or grounding change
+ * never serves an old-scale number next to a new one.
  */
 export function scoreVersion() {
-  return `${PROMPT_VERSIONS.score}/${models().ats.model}`;
+  // The prompt and model are unchanged, but old scores may include unsupported half credit.
+  // Hosts comparing this version can invalidate those cached scores and recompute them.
+  return `${PROMPT_VERSIONS.score}/${models().ats.model}/grounding.v2`;
 }
 
 // Scoring runs the ATS model at temperature 0 (a reasoning model ignores that and takes the

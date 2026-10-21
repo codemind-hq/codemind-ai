@@ -1,0 +1,34 @@
+[
+  {
+    "name": "Relevant supported work",
+    "requirement": "Build backend APIs",
+    "resume": "Built backend APIs for billing customers.",
+    "quote": "Built backend APIs for billing customers",
+    "verdict": "met",
+    "expected": "met"
+  },
+  {
+    "name": "Fabricated evidence",
+    "requirement": "Run Kubernetes workloads",
+    "resume": "Built backend APIs for billing customers.",
+    "quote": "Ran Kubernetes workloads in production",
+    "verdict": "met",
+    "expected": "missing"
+  },
+  {
+    "name": "Empty evidence",
+    "requirement": "Lead incident response",
+    "resume": "Built backend APIs for billing customers.",
+    "quote": "",
+    "verdict": "met",
+    "expected": "missing"
+  },
+  {
+    "name": "Authentic but irrelevant evidence",
+    "requirement": "Run Kubernetes workloads",
+    "resume": "Built backend APIs for billing customers.",
+    "quote": "Built backend APIs for billing customers",
+    "verdict": "met",
+    "expected": "missing"
+  }
+]

@@ -3,6 +3,21 @@
 // Nothing here runs.
 
 /**
+ * @typedef {object} TailoringCompletion
+ * @property {'complete'|'partial'} status Whether optional stages completed without warnings; not a quality guarantee.
+ * @property {{ stage: string, code: string, sections?: string[] }[]} warnings Safe diagnostics, without provider messages.
+ * @property {number} gapPassesAttempted
+ * @property {boolean} targetReached
+ */
+
+/**
+ * @typedef {object} TailoringReview
+ * @property {boolean} required Known unconfirmed job terms or estimated figures remain for user review.
+ * @property {string[]} unconfirmedKeywords
+ * @property {object[]} estimates Figures generated as estimates, not verified facts.
+ */
+
+/**
  * @typedef {object} ProviderSettings
  * @property {string} [apiKey] The provider's API key.
  * @property {string} [baseUrl] The provider's endpoint (Qwen's Model Studio, Ollama).
@@ -63,6 +78,8 @@
  * @property {*} [userId]
  * @property {*} [ref]
  * @property {string} [requestId]
+ * @property {AbortSignal} [signal] Cancels model calls, retries and feature fallbacks.
+ * @property {number} [deadlineAt] Absolute Unix timestamp in milliseconds, shared across all workflow calls.
  */
 
 /**

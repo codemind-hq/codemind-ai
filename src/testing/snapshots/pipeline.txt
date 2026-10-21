@@ -1,6 +1,6 @@
-ats: 50 → 39; assumed ["Spark"]; bullets ["Built the billing data pipeline in Python on Airflow and AWS.","Cut nightly batch runtime from 6 hours to 90 minutes."]
-balanced: 66 → 50; assumed ["Spark"]; bullets ["Built the billing data pipeline in Python on Airflow and AWS.","Cut nightly batch runtime from 6 hours to 90 minutes."]
-realistic: 66 → 50; assumed ["Spark"]; bullets ["Built the billing data pipeline in Python on Airflow and AWS.","Cut nightly batch runtime from 6 hours to 90 minutes."]
+ats: 50 → 23; assumed ["Spark"]; bullets ["Built the billing data pipeline in Python on Airflow and AWS.","Cut nightly batch runtime from 6 hours to 90 minutes."]
+balanced: 66 → 23; assumed ["Spark"]; bullets ["Built the billing data pipeline in Python on Airflow and AWS.","Cut nightly batch runtime from 6 hours to 90 minutes."]
+realistic: 66 → 23; assumed ["Spark"]; bullets ["Built the billing data pipeline in Python on Airflow and AWS.","Cut nightly batch runtime from 6 hours to 90 minutes."]
 
 === call 1 ===
 metered: {"kind":"score","promptVersion":"score.v6","attempt":null,"ok":true,"flex":false}
@@ -782,7 +782,7 @@ RESUME (the tailored resume's experience; every bullet has its index "i" within 
 [{"role":0,"company":"Northwind","title":"Senior Data Engineer","period":"Mar 2021 – Present","bullets":[{"i":0,"text":"Built the billing data pipeline in Python on Airflow and AWS."},{"i":1,"text":"Cut nightly batch runtime from 6 hours to 90 minutes."}]},{"role":1,"company":"Contoso","title":"Data Engineer","period":"Jun 2018 – Feb 2021","bullets":[{"i":0,"text":"Maintained ETL jobs in Python and SQL."}]}]
 
 GAPS (the scorer's verdict on each requirement the resume does not yet meet, and why):
-0. [required experience] 5+ years of data engineering experience — weak
+0. [required experience] 5+ years of data engineering experience — missing
 1. [required responsibility] Lead incident response and drive postmortem outcomes for the data platform — missing
 2. [required responsibility, measured] Reduce cloud cost without sacrificing reliability — missing
 5. [required skill] Spark — missing
@@ -1011,7 +1011,7 @@ RESUME (the tailored resume's experience; every bullet has its index "i" within 
 [{"role":0,"company":"Northwind","title":"Senior Data Engineer","period":"Mar 2021 – Present","bullets":[{"i":0,"text":"Built the billing data pipeline in Python on Airflow and AWS."},{"i":1,"text":"Cut nightly batch runtime from 6 hours to 90 minutes."}]},{"role":1,"company":"Contoso","title":"Data Engineer","period":"Jun 2018 – Feb 2021","bullets":[{"i":0,"text":"Maintained ETL jobs in Python and SQL."}]}]
 
 GAPS (the scorer's verdict on each requirement the resume does not yet meet, and why):
-0. [required experience] 5+ years of data engineering experience — weak
+0. [required experience] 5+ years of data engineering experience — missing
 1. [required responsibility] Lead incident response and drive postmortem outcomes for the data platform — missing
 2. [required responsibility, measured] Reduce cloud cost without sacrificing reliability — missing
 5. [required skill] Spark — missing
@@ -1955,9 +1955,9 @@ RESUME (the tailored resume's experience; every bullet has its index "i" within 
 [{"role":0,"company":"Northwind","title":"Senior Data Engineer","period":"Mar 2021 – Present","bullets":[{"i":0,"text":"Built the billing data pipeline in Python on Airflow and AWS."},{"i":1,"text":"Cut nightly batch runtime from 6 hours to 90 minutes."}]},{"role":1,"company":"Contoso","title":"Data Engineer","period":"Jun 2018 – Feb 2021","bullets":[{"i":0,"text":"Maintained ETL jobs in Python and SQL."}]}]
 
 GAPS (the scorer's verdict on each requirement the resume does not yet meet, and why):
-0. [required experience] 5+ years of data engineering experience — weak
-1. [required responsibility] Lead incident response and drive postmortem outcomes for the data platform — weak
-2. [required responsibility, measured] Reduce cloud cost without sacrificing reliability — weak: the line states no figure
+0. [required experience] 5+ years of data engineering experience — missing
+1. [required responsibility] Lead incident response and drive postmortem outcomes for the data platform — missing
+2. [required responsibility, measured] Reduce cloud cost without sacrificing reliability — missing
 5. [required skill] Spark — missing
 6. [required skill] Kafka — weak: listed under skills, not shown in a line of work
 
@@ -2184,9 +2184,9 @@ RESUME (the tailored resume's experience; every bullet has its index "i" within 
 [{"role":0,"company":"Northwind","title":"Senior Data Engineer","period":"Mar 2021 – Present","bullets":[{"i":0,"text":"Built the billing data pipeline in Python on Airflow and AWS."},{"i":1,"text":"Cut nightly batch runtime from 6 hours to 90 minutes."}]},{"role":1,"company":"Contoso","title":"Data Engineer","period":"Jun 2018 – Feb 2021","bullets":[{"i":0,"text":"Maintained ETL jobs in Python and SQL."}]}]
 
 GAPS (the scorer's verdict on each requirement the resume does not yet meet, and why):
-0. [required experience] 5+ years of data engineering experience — weak
-1. [required responsibility] Lead incident response and drive postmortem outcomes for the data platform — weak
-2. [required responsibility, measured] Reduce cloud cost without sacrificing reliability — weak: the line states no figure
+0. [required experience] 5+ years of data engineering experience — missing
+1. [required responsibility] Lead incident response and drive postmortem outcomes for the data platform — missing
+2. [required responsibility, measured] Reduce cloud cost without sacrificing reliability — missing
 5. [required skill] Spark — missing
 6. [required skill] Kafka — weak: listed under skills, not shown in a line of work
 
@@ -3128,9 +3128,9 @@ RESUME (the tailored resume's experience; every bullet has its index "i" within 
 [{"role":0,"company":"Northwind","title":"Senior Data Engineer","period":"Mar 2021 – Present","bullets":[{"i":0,"text":"Built the billing data pipeline in Python on Airflow and AWS."},{"i":1,"text":"Cut nightly batch runtime from 6 hours to 90 minutes."}]},{"role":1,"company":"Contoso","title":"Data Engineer","period":"Jun 2018 – Feb 2021","bullets":[{"i":0,"text":"Maintained ETL jobs in Python and SQL."}]}]
 
 GAPS (the scorer's verdict on each requirement the resume does not yet meet, and why):
-0. [required experience] 5+ years of data engineering experience — weak
-1. [required responsibility] Lead incident response and drive postmortem outcomes for the data platform — weak
-2. [required responsibility, measured] Reduce cloud cost without sacrificing reliability — weak: the line states no figure
+0. [required experience] 5+ years of data engineering experience — missing
+1. [required responsibility] Lead incident response and drive postmortem outcomes for the data platform — missing
+2. [required responsibility, measured] Reduce cloud cost without sacrificing reliability — missing
 5. [required skill] Spark — missing
 6. [required skill] Kafka — weak: listed under skills, not shown in a line of work
 

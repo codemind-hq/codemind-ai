@@ -1,5 +1,6 @@
 import { jobPostingBlock } from '../../text/fence.js';
 import { tailorEffort } from '../../llm/routing.js';
+import { isExecutionStopped } from '../../llm/errors.js';
 
 // What the letters, answers and referrals share: how a draft is written and checked, and the
 // prompt pieces they are assembled from.
@@ -46,7 +47,8 @@ ${first}`;
   try {
     const second = await write(revise);
     return second && check(second).length < issues.length ? second : first;
-  } catch {
+  } catch (err) {
+    if (isExecutionStopped(err)) throw err;
     return first;
   }
 }

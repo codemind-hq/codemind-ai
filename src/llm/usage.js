@@ -1,5 +1,6 @@
 import { log, onUsage } from '../runtime.js';
 import { costFor } from './catalog.js';
+import { safeErrorDetails } from './errors.js';
 
 /** The month a call is billed to, as "YYYY-MM". */
 export function periodOf(date = new Date()) {
@@ -33,6 +34,6 @@ export async function recordUsage({ userId = null, kind = 'other', promptVersion
     });
   } catch (err) {
     // Metering must never fail a user request.
-    log().warn({ err }, 'failed to record usage event');
+    log().warn(safeErrorDetails(err), 'failed to record usage event');
   }
 }
