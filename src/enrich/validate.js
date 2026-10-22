@@ -1,6 +1,6 @@
 import { countryForToken, extractCountries, placeMentioned, regionNameFromCode } from '../text/countries.js';
 import { ENRICH_GROUPS, GROUP_DEFAULTS, SUBCATEGORIES, UNASKED_GROUPS, fillOmitted, groupSchemas } from './schema.js';
-import { BILLION_VALUATION, FOR_A_CLIENT } from '../text/startupSignals.js';
+import { BILLION_VALUATION, FOR_A_CLIENT, VENTURE_BACKED } from '../text/startupSignals.js';
 import { canonicalSkill as dictionarySkill, parseSkills, skillLabel } from '../text/dict/skills.js';
 import { MAX_MODEL_KEYWORDS, canonicalKeyword, isGenericKeyword, normalizeKeyword } from '../text/jobKeywords.js';
 import { cityCountry } from '../text/dict/cities.js';
@@ -158,13 +158,31 @@ export function countriesInEntry(entry) {
 // A skill the dictionary knows is stored under its display label, so "k8s", "Kubernetes"
 // and "kubernetes" all read "Kubernetes" and "ci/cd" reads "CI/CD"; one the dictionary
 // does not know keeps the model's words, since a skill outside the vocabulary is still
-// a skill the posting names.
-function canonicalSkill(value) {
+// a skill the posting names — provided the posting names it: a term the dictionary does not
+// know and the posting never says ("Git (source control) Wildlife Jenkins", a company's name
+// run into a tool's) is dropped, as is a practice that is no skill ("docs", "tests", "source
+// freshness"), which lowered every resume's match for a thing nobody lists.
+function canonicalSkill(value, posting = '') {
   const skill = clean(value);
   if (!skill || skill.length > 60) return null;
   const slug = dictionarySkill(skill);
-  return slug ? skillLabel(slug) : skill;
+  if (slug) return skillLabel(slug);
+  if (NOT_A_SKILL.has(normalizeKeyword(skill)) || isGenericKeyword(normalizeKeyword(skill))) return null;
+  if (posting && !quoteFound(skill, posting)) return null;
+  return skill;
 }
+
+// Practices and nouns a model files as skills that no resume lists as one.
+const NOT_A_SKILL = new Set([
+  'docs', 'doc', 'documentation', 'tests', 'test', 'testing', 'unit tests', 'unit testing', 'source freshness',
+  'code review', 'code reviews', 'pull requests', 'version control', 'source control', 'best practices', 'clean code',
+  'problem solving', 'communication', 'teamwork', 'collaboration', 'mentoring', 'leadership', 'ownership',
+  'attention to detail', 'time management', 'analytical skills', 'written communication', 'verbal communication',
+  'english', 'german', 'french', 'spanish', 'bachelor', "bachelor's degree", 'degree', 'computer science',
+  'on call', 'on-call', 'monitoring', 'observability', 'performance', 'scalability', 'security', 'reliability',
+  'architecture', 'system design', 'data structures', 'algorithms', 'oop', 'object oriented programming',
+  'software development', 'software engineering', 'web development', 'frontend', 'backend', 'full stack',
+]);
 
 function uniqueCaseless(values, limit = Infinity) {
   const seen = new Set();
@@ -269,6 +287,10 @@ const CHECKS = {
     const min = stated(data.min);
     const max = stated(data.max);
     if (min === null && max === null) return NO_SALARY;
+    // The same round figure at both ends ("₹1,000,000 – ₹1,000,000", "$100,000 - $100,000") is a
+    // board's required field filled in, not pay the posting states; the model read it as written,
+    // so nothing is retried. One figure that is not round ("$87,500") stays as the one it is.
+    if (min !== null && min === max && min % 10_000 === 0) return NO_SALARY;
     const currency = clean(data.currency)?.toUpperCase() || null;
     const { period } = data;
     const amounts = [['min', min], ['max', max]].filter(([, amount]) => amount !== null);
@@ -317,10 +339,10 @@ const CHECKS = {
     };
   },
 
-  skills(data, { rawPosting, descriptionChars, fail }) {
-    const required = uniqueCaseless(data.required.map(canonicalSkill), MAX_SKILLS);
+  skills(data, { posting, rawPosting, descriptionChars, fail }) {
+    const required = uniqueCaseless(data.required.map((skill) => canonicalSkill(skill, posting)), MAX_SKILLS);
     const requiredKeys = new Set(required.map((skill) => skill.toLowerCase()));
-    const preferred = uniqueCaseless(data.preferred.map(canonicalSkill)).filter((skill) => !requiredKeys.has(skill.toLowerCase()));
+    const preferred = uniqueCaseless(data.preferred.map((skill) => canonicalSkill(skill, posting))).filter((skill) => !requiredKeys.has(skill.toLowerCase()));
     // Only when the skill dictionary finds one in the text: a posting that names none (a patrol
     // officer, a plant engineer, an ad about the company) gave retries nothing but "valid driver's
     // license" or "Microsoft", at gpt-5-mini's price.
@@ -464,7 +486,9 @@ const STAGE_WORDS = {
   series_a: /\bseries\s+a\b/i,
   series_b: /\bseries\s+b\b/i,
   series_c: /\bseries\s+c\b/i,
-  venture_backed: /\b(backed|funded) by\b|\b(venture|vc)[-\s](backed|funded)\b|\binvestors?\b|\bventure capital\b|\baccelerator\b|\by\s?combinator\b/i,
+  // Funding wording, not "investors" or "backed by" alone (text/startupSignals.js VENTURE_BACKED):
+  // a bank's "backed by the strength of our investors" made it a venture-backed startup.
+  venture_backed: VENTURE_BACKED,
   later_stage: /\bseries\s+[d-h]\b|\bpre[-\s]?ipo\b/i,
   public: /\b(publicly|public company|nasdaq|nyse|lse|tsx|asx|stock exchange|listed on|ticker)\b/i,
   bootstrapped: /\b(bootstrapped|self[-\s]?funded|no (outside|external) (funding|investors))\b/i,

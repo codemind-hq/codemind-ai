@@ -31,6 +31,14 @@ const CASES = [
   ['Platform Engineer [REQ-3001]', null],
   // An intern posting is an intern posting whatever else it says.
   ['Senior Engineering Intern', 'intern'],
+  // A posting open at several rungs is read at its lowest.
+  ['Engineer Mission Assurance 2/3', 'mid'],
+  ['Software Engineer II/III', 'mid'],
+  ['Software Engineer 1-2', 'junior'],
+  ['Backend Engineer, Level 3 or 4', 'senior'],
+  // A requisition number is not a junior.
+  ['JR-217146 SAP Developer', null],
+  ['JR 217146 - SAP Developer', null],
 ];
 
 for (const [title, expected] of CASES) {

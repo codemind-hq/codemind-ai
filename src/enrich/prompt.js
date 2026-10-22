@@ -70,6 +70,8 @@ When the job title names the specialty (for example Machine Learning Engineer, Q
 
 IT support, help desk, and service desk roles are other.
 
+Engineering that is not software engineering is other, even when the posting mentions programming, scripts or software tools: mechanical, electrical, civil, structural, chemical, process, instrumentation, controls, hydraulic, reservoir, petroleum, mining, HVAC, manufacturing, quality (non-software), field service, facilities, systems engineering in aerospace or defense, mission assurance, hardware, chip, ASIC, RTL, FPGA board or analog design, and product development of physical goods. A role is software only when writing, operating or testing software is the substance of the work.
+
 Do not classify a role as ml_ai merely because it integrates an AI API.
 
 SUBCATEGORY

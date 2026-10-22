@@ -9,8 +9,10 @@ import {
   countryFromCode,
   countryNameFromCode,
   extractCountries,
+  isUsStateLocation,
   placeMentioned,
 } from './countries.js';
+import { canonicalCity, cityCountryAmong } from './dict/cities.js';
 
 // freehire's dictionary, which the table in countries.js is checked against so the two never
 // drift apart the way freehire's own once did (25 countries with a region and no name).
@@ -56,6 +58,40 @@ test('extractCountries finds every country and region a text names, regions firs
   assert.deepEqual(extractCountries('Nairobi, Kenya or Lagos, Nigeria'), ['Nigeria', 'Kenya']);
   assert.deepEqual(extractCountries('Prishtina, Kosovo'), ['Kosovo']);
   assert.deepEqual(extractCountries(''), []);
+});
+
+test('a state code that is also a country code is the state only after one of its cities', () => {
+  // DE is Delaware and Germany, IN Indiana and India, CA California and Canada, ME Maine and Montenegro.
+  for (const text of ['San Francisco, CA', 'Wilmington, DE', 'Portland, ME', 'Cambridge, MA', 'Boise, ID', 'Phoenix, AZ', 'Austin, TX', 'Remote - California']) {
+    assert.ok(isUsStateLocation(text), text);
+    assert.deepEqual(extractCountries(text), ['United States'], text);
+  }
+  for (const text of ['Berlin, DE, 12489', 'Hannover, DE', 'Munich, DEU-09, DE, 80636', 'Pune, IN', 'Pune, IN, 411013', 'Bengaluru, IN', 'Toronto, ON, CA', 'Lima, PE', 'Amsterdam, NL']) {
+    assert.ok(!isUsStateLocation(text), text);
+    assert.deepEqual(extractCountries(text), [], text);
+  }
+  // The city is read from the words before the comma, so a sentence of a description still answers.
+  assert.ok(isUsStateLocation('must be based in san francisco, ca to apply'));
+  assert.ok(!isUsStateLocation('our office is in berlin, de'));
+  // A code no country has needs no city at all.
+  assert.ok(isUsStateLocation('Anytown, TX'));
+  assert.ok(isUsStateLocation('Anytown, NY'));
+});
+
+test('cityCountryAmong says which of two countries a city speaks for, and canonicalCity the current name of an old one', () => {
+  assert.equal(cityCountryAmong('Berlin', ['DE', 'US']), 'de');
+  assert.equal(cityCountryAmong('San Francisco', ['ca', 'us']), 'us');
+  assert.equal(cityCountryAmong('Portland', ['me', 'us']), 'us');
+  assert.equal(cityCountryAmong('Toronto', ['ca', 'us']), 'ca');
+  assert.equal(cityCountryAmong('Lima', ['pe', 'ca']), 'pe');
+  // Both have one, or neither: no answer.
+  assert.equal(cityCountryAmong('Cambridge', ['gb', 'us']), null);
+  assert.equal(cityCountryAmong('Nowhere Falls', ['de', 'us']), null);
+  assert.equal(cityCountryAmong('Berlin', []), null);
+  assert.equal(canonicalCity('Bangalore'), 'Bengaluru');
+  assert.equal(canonicalCity('BOMBAY'), 'Mumbai');
+  assert.equal(canonicalCity('Bengaluru'), '');
+  assert.equal(canonicalCity(''), '');
 });
 
 test('countryNameFromCode and countryFromCode give the table name for a code', () => {

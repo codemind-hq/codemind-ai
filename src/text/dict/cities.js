@@ -100,3 +100,37 @@ export function cityCountryIn(name, code) {
   const claim = claims.get(k);
   return Boolean(claim) && claim.replace(CONTESTED, '').split('|').includes(c);
 }
+
+/**
+ * Which of the given countries (ISO codes) a city name speaks for, or null. A two-letter code
+ * after a city is a US state or a country ("Berlin, DE": Delaware or Germany; "San Francisco,
+ * CA": California or Canada), and the city is what tells them apart. The pinned or sole country
+ * of the name wins when it is one of them (Berlin is Germany's, though New Hampshire has one;
+ * San Francisco is the United States'); else the only one of them with a city of that name
+ * (Portland is in no Montenegro); else null, for a name none has or both do, or none at all.
+ */
+export function cityCountryAmong(name, codes) {
+  const wanted = (codes || []).map((code) => String(code || '').toLowerCase()).filter(Boolean);
+  if (wanted.length === 0) return null;
+  const known = cityCountry(name);
+  if (known && wanted.includes(known)) return known;
+  const claiming = wanted.filter((code) => cityCountryIn(name, code));
+  return claiming.length === 1 ? claiming[0] : null;
+}
+
+// Cities whose official name changed while postings keep the old one. To the reader and to the
+// city filter the two spellings are one city, so the current name is the one stored; the
+// gazetteer has both as aliases but names no preferred one, hence the table.
+const RENAMED = new Map([
+  ['bangalore', 'Bengaluru'],
+  ['bombay', 'Mumbai'],
+  ['calcutta', 'Kolkata'],
+  ['madras', 'Chennai'],
+  ['poona', 'Pune'],
+  ['kiev', 'Kyiv'],
+]);
+
+/** The current official name of a city a posting names by its old one ("Bangalore" → "Bengaluru"), or '' when the name is not one. */
+export function canonicalCity(name) {
+  return RENAMED.get(key(name)) || '';
+}

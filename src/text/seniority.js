@@ -14,7 +14,8 @@
 // by ingest and another by a model that answered nothing.
 const RULES = [
   ['intern', /\b(intern|interns|internship|co-?op|working student|placement student|summer analyst)\b/i],
-  ['junior', /\b(junior|jnr|jr\.?|entry[\s-]?level|new[\s-]?grad|graduate|grad programme|trainee|apprentice)\b/i],
+  // "JR-217146" is a requisition number, not a junior: "jr" followed by a dash and digits says nothing.
+  ['junior', /\b(junior|jnr|jr\.?(?!\s*[-–]?\s*\d)|entry[\s-]?level|new[\s-]?grad|graduate|grad programme|trainee|apprentice)\b/i],
   [
     'manager',
     /\b((?:engineering|development|software|technical|technology|it|qa|data|devops|platform|infrastructure|security) manager|director|head of|vice president|vp|svp|evp|chief \w+ officer|cto|cio|ciso)\b/i,
@@ -36,6 +37,14 @@ const NUMERAL = [
   ['junior', /\b(?:l|level\s*)?1\b|\bi\b(?!\w)/i],
 ];
 
+// A posting open at more than one rung ("Engineer 2/3", "Software Engineer II/III", "Level 1-2") is
+// read at its lowest: that is the least the job asks, and "2/3" read as 3 made a mid-level opening
+// senior. Arabic and Roman, joined by a slash, a dash or "or".
+const NUMERAL_RANGE = /\b(?:l|level\s*)?([1-9]|i{1,3}|iv|v|vi|vii)\s*(?:\/|[-–]|\bor\b|\s+to\s+)\s*(?:l|level\s*)?([1-9]|i{1,3}|iv|v|vi|vii)\b/i;
+const ROMAN = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7 };
+const rung = (numeral) => (/^\d$/.test(numeral) ? Number(numeral) : ROMAN[numeral.toLowerCase()]);
+const levelOfRung = (n) => (n >= 3 ? 'senior' : n === 2 ? 'mid' : 'junior');
+
 /**
  * The level a title states, or null when it states none.
  * Returns one of: intern | junior | mid | senior | staff | principal | lead | manager.
@@ -50,6 +59,8 @@ export function seniorityFromTitle(title) {
   for (const [level, pattern] of RULES) {
     if (pattern.test(text)) return level;
   }
+  const range = text.match(NUMERAL_RANGE);
+  if (range) return levelOfRung(Math.min(rung(range[1]), rung(range[2])));
   for (const [level, pattern] of NUMERAL) {
     if (pattern.test(text)) return level;
   }

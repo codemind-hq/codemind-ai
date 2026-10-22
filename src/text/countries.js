@@ -1,3 +1,5 @@
+import { cityCountryAmong } from './dict/cities.js';
+
 // Derives canonical country / region names from free-text location strings such as
 // "Remote - US", "USA, Canada", "Remote, EMEA" or "North America".
 
@@ -384,13 +386,38 @@ const US_STATE_ABBREVIATIONS =
   'AL|AK|AZ|AR|CA|CO|CT|DE|DC|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY';
 const US_STATE_NAMES =
   'alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|florida|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|minnesota|mississippi|missouri|montana|nebraska|nevada|new hampshire|new jersey|new mexico|new york|north carolina|north dakota|ohio|oklahoma|oregon|pennsylvania|rhode island|south carolina|south dakota|tennessee|texas|utah|vermont|virginia|washington|west virginia|wisconsin|wyoming';
-const US_STATE_PATTERN = new RegExp(
-  `(,\\s*(?:${US_STATE_ABBREVIATIONS})(?![A-Za-z]))|((?:^|[^a-z])(?:${US_STATE_NAMES})(?![a-z]))`,
-  'i'
-);
+const US_STATE_CODE = new RegExp(`,\\s*(${US_STATE_ABBREVIATIONS})(?![A-Za-z])`, 'gi');
+const US_STATE_NAME = new RegExp(`(?:^|[^a-z])(?:${US_STATE_NAMES})(?![a-z])`, 'i');
+
+// State codes that are also the ISO code of a country in the table: ", DE" is Delaware after
+// "Wilmington" and Germany after "Berlin", ", IN" Indiana or India, ", CA" California or Canada.
+// Workday and SAP boards write a city with its country's code this way ("Pune, IN, 411013"), and
+// before the city was asked, every such posting was read as a US one.
+const AMBIGUOUS_STATE_CODES = new Set(US_STATE_ABBREVIATIONS.split('|').filter((code) => NAME_BY_CODE.has(code)));
+
+/**
+ * Whether a ", ST" in the text is a US state. A code that is also a country's is one only when
+ * the city before the comma says so (dict/cities.js cityCountryAmong, tried on the last one to
+ * three words before it, longest first): "San Francisco, CA" is, "Berlin, DE" is not, and a
+ * name the gazetteer places in neither says nothing, so the code adds no country.
+ */
+function namesUsState(text) {
+  for (const match of text.matchAll(US_STATE_CODE)) {
+    const code = match[1].toUpperCase();
+    if (!AMBIGUOUS_STATE_CODES.has(code)) return true;
+    const before = text.slice(0, match.index).split(/[,;/|()]/).pop().trim().split(/\s+/).filter(Boolean);
+    for (let size = Math.min(3, before.length); size >= 1; size -= 1) {
+      const says = cityCountryAmong(before.slice(-size).join(' '), [code, 'US']);
+      if (says === 'us') return true;
+      if (says) break;
+    }
+  }
+  return false;
+}
 
 export function isUsStateLocation(text) {
-  return US_STATE_PATTERN.test(String(text || ''));
+  const source = String(text || '');
+  return namesUsState(source) || US_STATE_NAME.test(source);
 }
 
 // Eligibility phrases in a description, e.g. "must be based in the US",

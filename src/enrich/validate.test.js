@@ -218,6 +218,22 @@ test('salary: "from" and "up to" keep the open end null', () => {
   assert.deepEqual([upTo.value.salary.min, upTo.value.salary.max], [null, 180000]);
 });
 
+test('salary: the same round figure at both ends is a placeholder, not pay; one that is not round is a stated figure', () => {
+  const posting = buildPostingText({ title: 'Engineer', description: 'Salary: ₹1,000,000 – ₹1,000,000 per year. Fixed pay of $87,500 per year.' });
+  const placeholder = validateEnrichment(
+    answer({ salary: { min: 1000000, max: 1000000, currency: 'INR', period: 'year', evidence: '₹1,000,000 – ₹1,000,000 per year' } }),
+    { posting }
+  );
+  assert.deepEqual(codesFor(placeholder, 'salary'), []);
+  assert.deepEqual(placeholder.value.salary, NO_PAY);
+  const fixed = validateEnrichment(
+    answer({ salary: { min: 87500, max: 87500, currency: 'USD', period: 'year', evidence: '$87,500 per year' } }),
+    { posting }
+  );
+  assert.deepEqual(codesFor(fixed, 'salary'), []);
+  assert.deepEqual([fixed.value.salary.min, fixed.value.salary.max], [87500, 87500]);
+});
+
 test('amountsIn reads thousands separators, decimals and units written once for a range', () => {
   assert.deepEqual(amountsIn('$120-150k').sort((a, b) => a - b), [120, 150, 120000, 150000]);
   assert.ok(amountsIn('€65.000 - €80.000 brutto').includes(80000));
@@ -434,6 +450,19 @@ test('seniority falls back to what the title states when the model leaves it out
   assert.equal(seniorityFromTitle('Software Engineer III'), 'senior');
 });
 
+test('a skill the dictionary does not know must be in the posting, and a practice is not a skill', () => {
+  const result = validate({
+    skills: {
+      required: ['Go', 'docs', 'tests', 'source freshness', 'Git (source control) Wildlife Jenkins', 'communication', 'Austin office'],
+      preferred: ['React', 'teamwork', 'golang tooling'],
+    },
+  });
+  assert.deepEqual(result.errors.filter((e) => e.group === 'skills'), []);
+  // "Austin office" and "golang tooling" are in the posting's words; the dictionary knows neither,
+  // so they stay as the posting names them, where the run-on and the practices go.
+  assert.deepEqual(result.value.skills, { required: ['Go', 'Austin office'], preferred: ['React', 'golang tooling'] });
+});
+
 test('a long posting answered with no skills at all is retried; a short one may have none', () => {
   const long = buildPostingText({
     title: 'Senior Backend Engineer',
@@ -625,6 +654,24 @@ test('a company valued at a billion is late stage, whatever round it names', () 
   const result = validateEnrichment(answer({ company }), { posting });
   assert.equal(result.value.company.fundingStage, 'later_stage');
   assert.equal(result.value.company.calledStartup, false);
+});
+
+test('venture-backed needs funding wording in its quote, not "investors" or "backed by" alone', () => {
+  const posting = buildPostingText({
+    title: 'Software Engineer',
+    company: 'Big Bank',
+    location: 'Charlotte',
+    description: 'We are backed by the strength of our investors and funded by a century of growth.\nOur peer Acme is backed by Sequoia Capital and raised $40M last year.',
+  });
+  const read = (evidence) => validateEnrichment(answer({ company: { fundingStage: 'venture_backed', calledStartup: false, employeeCount: null, evidence } }), { posting }).value.company;
+  // A bank's words about itself: the stage is dropped, the answer kept.
+  assert.deepEqual(read('backed by the strength of our investors'), { fundingStage: null, calledStartup: false, employeeCount: null, evidence: null });
+  assert.deepEqual(read('funded by a century of growth'), { fundingStage: null, calledStartup: false, employeeCount: null, evidence: null });
+  // Funding wording in the quote keeps it.
+  assert.equal(read('backed by Sequoia Capital').fundingStage, 'venture_backed');
+  assert.equal(read('raised $40M last year').fundingStage, 'venture_backed');
+  // Without a quote, the sentence of the posting that says it is found; the bank's sentence is not it.
+  assert.equal(read(null).evidence, 'Our peer Acme is backed by Sequoia Capital and raised $40M last year.');
 });
 
 test("a recruiter's posting says nothing about the company it hires for", () => {
