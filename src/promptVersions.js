@@ -4,8 +4,8 @@
 export const PROMPT_VERSIONS = {
   score: 'score.v6',
   tailor: 'tailor.v16',
-  coverLetter: 'coverLetter.v5',
-  answer: 'answer.v5',
+  coverLetter: 'coverLetter.v6',
+  answer: 'answer.v6',
   parseResume: 'parseResume.v7',
   interviewPrep: 'interviewPrep.v2',
   interviewFeedback: 'interviewFeedback.v1',

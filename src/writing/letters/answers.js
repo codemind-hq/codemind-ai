@@ -1,7 +1,7 @@
 import { PROMPT_VERSIONS } from '../../promptVersions.js';
 import { complete } from '../../llm/index.js';
 import { PROSE_VOICE_RULES, proseIssues } from '../../text/voice.js';
-import { cap, jobSection, pickPrompt, sections, writeInVoice, writerSettings } from './write.js';
+import { applicationQuestionBlock, cap, jobSection, pickPrompt, sections, writeInVoice, writerSettings } from './write.js';
 
 // Answers to the questions on an application form.
 
@@ -33,7 +33,7 @@ export async function generateApplicationAnswer({ jobDescription, jobTitle = '',
   const user = `${pickPrompt(prompt, FALLBACK_ANSWER_USER_PROMPT)}
 
 APPLICATION QUESTION (answer this exactly):
-${question.trim()}
+${applicationQuestionBlock(question)}
 
 ${sections([
   ['EARLIER ANSWERS (the candidate answered these similar questions before; keep every fact consistent with them (salary, dates, authorization, notice period) and reuse their wording where it still fits this job)', cap(past, 4000)],
@@ -59,7 +59,10 @@ Write the answer to the APPLICATION QUESTION only.`;
 const ANSWERS_AT_ONCE = 3;
 
 /**
- * Answer several questions; `pastAnswersFor(text)` supplies each one's earlier answers.
+ * Answer several questions; `pastAnswersFor(text)` supplies each one's earlier answers. One
+ * answer failing does not lose the others, already written and paid for: it comes back as
+ * { id, error } beside the { id, answer } rows. Only when none could be written does the call
+ * throw, with the first failure.
  *
  * @param {{ questions: string[], pastAnswersFor?: (question: string) => object[] } & object} input The questions, and the context generateApplicationAnswer takes.
  * @param {import('../../types.js').CallMeta} [meta]
@@ -67,12 +70,19 @@ const ANSWERS_AT_ONCE = 3;
  */
 export async function generateApplicationAnswers({ questions, pastAnswersFor = () => [], ...context }, meta = {}) {
   const answers = [];
+  let firstError = null;
   for (let start = 0; start < questions.length; start += ANSWERS_AT_ONCE) {
-    const batch = questions.slice(start, start + ANSWERS_AT_ONCE).map(async ({ id, text }) => ({
-      id,
-      answer: await generateApplicationAnswer({ ...context, question: text, pastAnswers: pastAnswersFor(text) }, meta),
-    }));
+    const batch = questions.slice(start, start + ANSWERS_AT_ONCE).map(({ id, text }) =>
+      generateApplicationAnswer({ ...context, question: text, pastAnswers: pastAnswersFor(text) }, meta).then(
+        (answer) => ({ id, answer }),
+        (err) => {
+          firstError ||= err;
+          return { id, error: String(err?.message || 'The answer could not be written.') };
+        }
+      )
+    );
     answers.push(...(await Promise.all(batch)));
   }
+  if (firstError && !answers.some((a) => a.answer)) throw firstError;
   return answers;
 }

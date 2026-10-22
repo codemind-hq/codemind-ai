@@ -175,7 +175,7 @@ test('letters: a cover letter, an application answer and a referral request', as
   await generateCoverLetter({ ...context, gaps: ['Experience with Kafka'], confirmed: [{ keyword: 'Kafka', note: 'Used it for billing events' }], companyFacts: 'Acme makes analytics software.', jobTerms: ['Python', 'Kafka'], jobCountry: 'US' }, { userId: 'u1' });
   await generateApplicationAnswer({ ...context, question: 'Tell us about a pipeline you improved.', pastAnswers: [] }, { userId: 'u1' });
   await generateReferral({ ...context, personName: 'Sam Lee', personRole: 'Staff Engineer', relationship: 'former colleague', format: 'message' }, { userId: 'u1' });
-  assert.deepEqual(kinds().map((v) => v.replace(/\+revise$/, '')).filter((v, i, all) => all.indexOf(v) === i), ['coverLetter.v5', 'answer.v5', 'referral.v1']);
+  assert.deepEqual(kinds().map((v) => v.replace(/\+revise$/, '')).filter((v, i, all) => all.indexOf(v) === i), ['coverLetter.v6', 'answer.v6', 'referral.v1']);
   snapshot('letters');
 });
 

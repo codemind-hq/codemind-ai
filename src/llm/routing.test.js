@@ -26,6 +26,18 @@ test('withFallback tries the fallback once after a failure', async () => {
   assert.deepEqual(calls, ['a', 'b']);
 });
 
+test('withFallback does not try the fallback on a failure it would only repeat', async () => {
+  for (const code of ['ai_refused', 'ai_no_credits', 'ai_not_configured']) {
+    const calls = [];
+    const fail = async (m) => {
+      calls.push(m);
+      throw Object.assign(new Error(code), { code });
+    };
+    await assert.rejects(withFallback(fail, { model: 'a', fallbackModel: 'b' }, quiet), { code });
+    assert.deepEqual(calls, ['a'], code);
+  }
+});
+
 test('withFallback rethrows when there is no distinct fallback, or the fallback fails too', async () => {
   const fail = async (m) => {
     throw new Error(`fail:${m}`);

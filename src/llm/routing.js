@@ -10,8 +10,9 @@ import { log as runtimeLog, models } from '../runtime.js';
  * output, or a failed check inside `call`), try the fallback once. A "model" is whatever
  * `call` takes: a model name, or settings such as { model, reasoningEffort }.
  */
-// Failures another model would only repeat: a refusal is about the request, not the model.
-const NO_FALLBACK = new Set(['ai_refused']);
+// Failures another model would only repeat: a refusal is about the request, not the model; an
+// account with no credits or a rejected key is about the provider, and the fallback is on it too.
+const NO_FALLBACK = new Set(['ai_refused', 'ai_no_credits', 'ai_not_configured']);
 
 export async function withFallback(call, tries, log = runtimeLog()) {
   const { model, fallbackModel } = tries || models().ats;
