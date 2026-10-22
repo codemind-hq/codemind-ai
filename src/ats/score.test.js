@@ -71,6 +71,9 @@ test('a years requirement is capped by the years the resume supports', () => {
   assert.equal(yearsCap('5+ years building backend services', 6), 'met');
   assert.equal(yearsCap('5+ years building backend services', 4), 'weak');
   assert.equal(yearsCap('5+ years building backend services', 2), 'missing');
+  assert.equal(yearsCap('3-5 years building backend services', 3), 'met');
+  assert.equal(yearsCap('3 to 5 years building backend services', 3), 'met');
+  assert.equal(yearsCap('3–5 years building backend services', 3), 'met');
   assert.equal(yearsCap('Experience in payments', 1), 'met', 'no number, no cap');
   assert.equal(yearsCap('5 years of Go', null), 'met', 'unknown support, no cap');
 });

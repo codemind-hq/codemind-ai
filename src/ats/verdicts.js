@@ -63,7 +63,7 @@ export function quoteInResume(quote, resumeText) {
   return holds(resumeText, squash(quote));
 }
 
-const YEARS_ASKED_RE = /\b(\d{1,2})\s*\+?\s*(?:years?|yrs?)\b/i;
+const YEARS_ASKED_RE = /\b(\d{1,2})(?:\s*(?:-|–|to)\s*\d{1,2})?\s*\+?\s*(?:years?|yrs?)\b/i;
 
 /**
  * The verdict a requirement can have at most, given the years it asks for and the years the

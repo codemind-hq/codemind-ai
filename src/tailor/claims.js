@@ -10,14 +10,21 @@ export const TENURE_WORDS_RE = /\b(?:(?:more than|over|nearly|almost|about)\s+)?
 
 // "completed an Azure certification", "graduate-level study in computer science": a credential
 // the resume never lists, which checks/certifications.js catches only when it is named (CKA, AWS Certified).
-const CREDENTIAL_RE = /\b(?:certif\w*|degree|diploma|graduate[- ]level|postgraduate|master'?s|bachelor'?s|ph\.?d|doctorate|licen[cs]ed?)\b/i;
-export const claimsCredential = (text) => CREDENTIAL_RE.test(String(text || ''));
+const CREDENTIAL_RE = /\b(?:certif\w*|degree|diploma|graduate[- ]level|postgraduate|master'?s|bachelor'?s|ph\.?d|doctorate|licen[cs]ed|(?:professional|state|nursing|medical|practi[cs]ing|bar|cpa|pe) licen[cs]es?)\b/i;
+// Engineering uses these words for things that are not credentials: TLS certificates, a 360-degree
+// view, a library licensed under MIT. Blank those out before looking for a credential.
+const NOT_A_CREDENTIAL_RE =
+  /\b(?:(?:tls|ssl|x\.?509|mtls|client|server|root|ca|signed|self-signed|wildcard|ssh|signing)[- ]certificates?|certificates?[- ](?:rotation|renewal|expiry|expiration|authority|authorities|pinning|management|manager|chain|signing)|cert-manager|\d+[- ]degrees?|degrees? of|licen[cs]ed under)\b/gi;
+export const claimsCredential = (text) => CREDENTIAL_RE.test(String(text || '').replace(NOT_A_CREDENTIAL_RE, ' '));
 
 // A clearance, citizenship or work permit: a fact about the candidate no line may state, and a
 // requirement no line meets ("Eligible to obtain a DoD Secret clearance" was written for one).
 const CLEARANCE_RE =
-  /\b(?:security clearance|clearance|clearances|citizen(?:ship)?|work (?:authori[sz]ation|permit)|authori[sz]ed to work|right to work|visa|sponsorship|green card|public trust|polygraph|eligib\w* (?:to obtain|for)|ts\/sci|top secret|secret clearance)\b/i;
-export const claimsClearance = (text) => CLEARANCE_RE.test(String(text || ''));
+  /\b(?:security clearance|clearance|clearances|citizenship|citizens? (?:of|status)|(?:u\.?s\.?|american|canadian|british|eu|uk) citizens?|(?:be|is|are) an? citizen|work (?:authori[sz]ation|permit)|authori[sz]ed to work|right to work|visa|(?:visa|work|employment|immigration|h-?1b) sponsorship|(?:no|without) sponsorship|(?:require|need|provide|offer)s? (?:\w+ )?sponsorship|green card|public trust|polygraph|eligib\w* to obtain|ts\/sci|top secret|secret clearance)\b/i;
+// "Visa" the card network, not the work permit: "Visa and Mastercard payments", "Visa Direct".
+const CARD_NETWORK_RE =
+  /\b(?:(?:mastercard|amex|discover)(?:,|\s+and|\s*\/|\s*&)\s*visa|visa(?:\s+(?:and|or)|\s*\/|\s*&)?\s+(?:mastercard|amex|discover|cards?|payments?|debit|credit|direct|checkout|network|tokens?|api|acceptance))\b/gi;
+export const claimsClearance = (text) => CLEARANCE_RE.test(String(text || '').replace(CARD_NETWORK_RE, ' '));
 
 // A line that states a figure, a tenure or a certification the resume (and what the user told
 // us) does not support is an invention (checks/facts.js). A percentage is its own kind of claim, so

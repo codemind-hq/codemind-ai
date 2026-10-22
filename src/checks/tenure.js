@@ -23,6 +23,25 @@ const UNREADABLE_TENURE_RE = /\b(decades?|over a decade|many years|several years
 
 const yearsValue = (raw) => (/^\d+$/.test(raw) ? Number(raw) : SPELLED[raw.toLowerCase()]);
 
+/**
+ * Whether the resume states a tenure in words no number can be read from. The summary and title
+ * speak about the candidate, so there any such phrase counts ("Two decades in fintech"). A bullet
+ * speaks about the work, so there the phrase has to sit in career wording, as a claimed "N years"
+ * does: "Indexed decades of archived documents" is not a tenure, and must not switch the check off
+ * for the whole resume.
+ */
+function statesUnreadableTenure(form) {
+  if ([form?.summary, form?.title].some((t) => t && UNREADABLE_TENURE_RE.test(t))) return true;
+  for (const line of (form?.experience || []).flatMap((e) => e.achievements || [])) {
+    const text = String(line || '');
+    for (const m of text.matchAll(new RegExp(UNREADABLE_TENURE_RE, 'gi'))) {
+      const around = text.slice(Math.max(0, m.index - CONTEXT_CHARS), m.index + m[0].length + CONTEXT_CHARS);
+      if (EXPERIENCE_CONTEXT.test(around) || ROLE_LEAD_IN.test(text.slice(0, m.index))) return true;
+    }
+  }
+  return false;
+}
+
 /** The tenures `text` claims for the candidate: every "N years" with career wording within reach. */
 export function tenureClaims(text) {
   const line = String(text || '');
@@ -43,7 +62,7 @@ export function tenureClaims(text) {
  */
 export function supportedYears(form, { now = new Date() } = {}) {
   const text = [form?.summary, form?.title, ...(form?.experience || []).flatMap((e) => [e.period, ...(e.achievements || [])])].filter(Boolean).join('\n');
-  if (UNREADABLE_TENURE_RE.test(text)) return null;
+  if (statesUnreadableTenure(form)) return null;
   let stated = 0;
   for (const m of text.matchAll(YEARS_RE)) stated = Math.max(stated, yearsValue(m[1]) || 0);
 
