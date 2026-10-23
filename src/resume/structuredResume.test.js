@@ -130,3 +130,14 @@ test('skills parsed into fragments are read as the resume meant them: a nested c
     { category: 'Languages', items: ['Python', 'Go'] },
   ]);
 });
+
+test("a role's city and state are kept for application forms and never written into the resume's text", () => {
+  const resume = cleanStructuredResume({
+    name: 'Jane Doe',
+    experience: [{ company: 'Acme, Austin, TX', title: 'Engineer', period: '2020 - 2024', city: ' Austin ', state: 'TX', achievements: ['Built the API'] }],
+  });
+  assert.equal(resume.experience[0].city, 'Austin');
+  assert.equal(resume.experience[0].state, 'TX');
+  const text = structuredResumeToText({ ...resume, experience: [{ ...resume.experience[0], company: 'Acme' }] });
+  assert.doesNotMatch(text, /Austin|\bTX\b/);
+});

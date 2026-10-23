@@ -6,7 +6,7 @@ export const PROMPT_VERSIONS = {
   tailor: 'tailor.v16',
   coverLetter: 'coverLetter.v6',
   answer: 'answer.v6',
-  parseResume: 'parseResume.v7',
+  parseResume: 'parseResume.v8',
   interviewPrep: 'interviewPrep.v2',
   interviewFeedback: 'interviewFeedback.v1',
   referral: 'referral.v1',

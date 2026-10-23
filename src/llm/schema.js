@@ -16,7 +16,7 @@ export const strictFormat = (name, schema) => ({ type: 'json_schema', json_schem
 
 // The entries of the structured resume form (resume/structuredResume.js), as the parse and
 // tailor formats both describe them.
-export const experienceEntry = object({ company: str, title: str, period: str, achievements: strList });
+export const experienceEntry = object({ company: str, title: str, period: str, city: str, state: str, achievements: strList });
 export const projectEntry = object({ name: str, role: str, period: str, link: str, highlights: strList });
 export const otherSection = object({ title: str, content: str });
 export const skillGroup = object({ category: str, items: strList });

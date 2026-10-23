@@ -39,7 +39,8 @@ const entries = (value, fields, listFields) =>
 const TEXT_LIMITS = { name: 200, title: 200, email: 254, phone: 50, location: 200, linkedin: 300, github: 300, portfolio: 300, summary: 5000 };
 const LIST_LIMITS = { skills: 100, languages: 100, achievements: 2000 };
 const ENTRY_LIMITS = {
-  experience: { company: 200, title: 200, period: 100, achievements: 2000 },
+  // A role's city and state are for application forms only; the resume's text never shows them.
+  experience: { company: 200, title: 200, period: 100, city: 100, state: 100, achievements: 2000 },
   education: { school: 200, degree: 200, location: 200, year: 50 },
   projects: { name: 200, role: 200, period: 100, link: 300, highlights: 2000 },
   certifications: { name: 200, issuer: 200, year: 50 },

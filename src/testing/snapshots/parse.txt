@@ -1,5 +1,5 @@
 === call 1 ===
-metered: {"kind":"resume_parse","promptVersion":"parseResume.v7","attempt":null,"ok":true,"flex":false}
+metered: {"kind":"resume_parse","promptVersion":"parseResume.v8","attempt":null,"ok":true,"flex":false}
 settings: {
   "model": "gpt-5.6-luna",
   "reasoning_effort": "none",
@@ -83,6 +83,12 @@ settings: {
                 "period": {
                   "type": "string"
                 },
+                "city": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                },
                 "achievements": {
                   "type": "array",
                   "items": {
@@ -94,6 +100,8 @@ settings: {
                 "company",
                 "title",
                 "period",
+                "city",
+                "state",
                 "achievements"
               ],
               "additionalProperties": false
@@ -251,6 +259,7 @@ Rules:
 - List items never start with a bullet symbol (•, -, *, ➤ and the like); drop it and keep the text.
 - Anything that fits no other field (publications, volunteering, interests...) goes in otherSections with its heading as title, so no content is lost.
 - In education, "school" is the institution's name and "location" is only the city written with it, never its state or country ("University of Texas, Austin, TX" → school "University of Texas", location "Austin"). A place that is part of the name stays in it ("University of Arkansas, Fayetteville" when no other place follows). Never repeat the place in both.
+- In experience, "company" is copied as written, place included. "city" and "state" are where that role was worked, as written with it ("Acme Corp, Austin, TX" → city "Austin", state "TX"; "Remote" or no place → both ""). State is a state, province or region; never a country.
 - "skills" is one skill per item (split comma lists). "period" is the date range as written.
 - When the skills section lists skills under categories ("Languages: Python, Go"), put each category in skillGroups as { category, items } with one skill per item, list the same skills in "skills" too, and set skillsHeading to the section's heading as written ("Technical Proficiencies"). Otherwise skillGroups is [] and skillsHeading is "". A categorized skills section never goes in otherSections.
 - Headings may be in any language; map them by meaning, and keep the content in its own language. Experience: Berufserfahrung, Werdegang, expérience professionnelle, experiencia laboral, esperienza professionale, werkervaring, experiência profissional. Education: Ausbildung, Studium, formation, études, educación, formación, istruzione, formazione, opleiding, formação. Skills: Kenntnisse, Kompetenzen, compétences, habilidades, competencias, competenze, vaardigheden, competências. Summary: Profil, Kurzprofil, Zusammenfassung, profil professionnel, perfil, resumen, profilo, samenvatting, resumo. Projects: Projekte, projets, proyectos, progetti, projecten, projetos. Certifications: Zertifikate, certificats, certificaciones, certificazioni, certificados. Languages: Sprachen, langues, idiomas, lingue, talen, línguas. Achievements: Auszeichnungen, distinctions, premios, logros, premi, prêmios, conquistas.
