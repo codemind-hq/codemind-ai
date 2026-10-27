@@ -140,3 +140,37 @@ test('a bullet the model keeps as written comes back as the resume has it, witho
   assert.deepEqual(bullets, ['Ran the data platform for three teams.', 'Built the billing API on AWS with Terraform.'], "kept in the model's order; a source that does not exist is skipped");
   assert.deepEqual(changes.map((c) => c.kind), ['rewritten']);
 });
+
+test("the scorer meets a skill by any of its spellings or by its words in one line, and does not count a sentence of the posting as a skill", async () => {
+  const { sentenceLike, skillVerdicts } = await import('../ats/verdicts.js');
+  const form = {
+    skills: ['Python'],
+    experience: [
+      {
+        achievements: [
+          'Built an MCP client (stdio + HTTP) for 20+ tools.',
+          'Investigated Redis incidents through OpenTelemetry traces.',
+          'Coordinated concurrent voice sessions over WebSocket.',
+        ],
+      },
+    ],
+  };
+  const verdict = (skill) => skillVerdicts(form, [skill])[0]?.verdict;
+  assert.equal(verdict('Model Context Protocol (MCP)'), 'met', 'the acronym in its parentheses');
+  assert.equal(verdict('incident investigation'), 'met', 'its words, in another form, in one line');
+  assert.equal(verdict('concurrency'), 'met', '"concurrent" is the same word');
+  assert.equal(verdict('Python'), 'weak', 'only listed');
+  assert.equal(verdict('exposure of sensitive data'), undefined, 'a sentence of the posting is not judged as a skill');
+  for (const s of ['exposure of sensitive data', 'metrics for multi-step agent workflows', 'safe rollout of system changes']) assert.ok(sentenceLike(s), s);
+  for (const s of ['Model Context Protocol (MCP)', 'Design of Experiments', 'LLM-based agents', 'managed cloud model platforms', 'CI/CD']) assert.ok(!sentenceLike(s), s);
+});
+
+test("a line naming the job's own multi-word terms is not a copy of the posting; one lifting its sentence still is", async () => {
+  const { copiedRequirement } = await import('./copied.js');
+  const posting = 'An understanding of security risks in agent systems, including prompt injection, unsafe tool execution and exposure of sensitive data.';
+  const terms = ['prompt injection', 'unsafe tool execution'];
+  const line = 'Blocked prompt injection, unsafe tool execution and credential leaks in the Cogentrex policy engine with seccomp sandboxing.';
+  assert.ok(copiedRequirement(line, [], posting), 'without the terms it reads as a run of the posting');
+  assert.equal(copiedRequirement(line, [], posting, { terms }), null, 'the terms are the words it was asked to use');
+  assert.ok(copiedRequirement('Understood security risks in agent systems including exposure of sensitive data.', [], posting, { terms }), 'the sentence itself is still a copy');
+});

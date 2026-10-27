@@ -114,7 +114,7 @@ Add every one of them: each goes in skills and into a bullet about work it fits 
  * about a keyword the user has since confirmed is out of date, and would come back as advice
  * to go and learn what they already know.
  */
-function scorerNotes(scoring, confirmed) {
+export function scorerNotes(scoring, confirmed) {
   if (!scoring) return null;
   const current = (s) => typeof s === 'string' && s.trim() && !confirmed.some((k) => hasKeyword(s, k));
   const list = (v) => (Array.isArray(v) ? v.filter(current).slice(0, NOTE_ITEMS) : []);

@@ -5,7 +5,7 @@ import { MAX_BULLET_CHARS } from '../checks/index.js';
 import { aiTellWords, RESUME_VOICE_RULES } from '../text/voice.js';
 import { fieldNotesFor } from './fieldNotes.js';
 import { losesEvidence } from './bullets.js';
-import { borrowedBullet, losesDetail, lostDetails, withoutRepeatedBullets } from './detail.js';
+import { borrowedBullet, denseBullet, losesDetail, lostDetails, withoutRepeatedBullets } from './detail.js';
 import { newStackTerms } from './stack.js';
 import { claimsClearance, claimsCredential, inventsFact, TENURE_RE, TENURE_WORDS_RE } from './claims.js';
 import { copiedRequirement, echoesRequirement } from './copied.js';
@@ -58,11 +58,14 @@ export function buildGapPrompt({ tailoredForm, scoring, job = null, estimates = 
     company: e.company,
     title: e.title,
     period: e.period,
-    bullets: (e.achievements || []).map((text, i) => ({ i, text })),
+    // A bullet dense with figures and names (detail.js) is not the place for a gap's line: a
+    // rewrite of it drops one of them and is refused, half the refusals on a Staff AI Engineer
+    // resume. It is marked, and the line goes in as a bullet of its own.
+    bullets: (e.achievements || []).map((text, i) => (denseBullet(text) ? { i, text, dense: true } : { i, text })),
   }));
   const user = `Extend the tailored resume so it meets each requirement under GAPS.
 
-RESUME (the tailored resume's experience; every bullet has its index "i" within its role):
+RESUME (the tailored resume's experience; every bullet has its index "i" within its role, and one marked "dense": true is never rewritten — a gap that belongs in its role is a new bullet, "from": null):
 ${JSON.stringify(compact(roles) || [])}
 
 GAPS (the scorer's verdict on each requirement the resume does not yet meet, and why):
@@ -104,6 +107,8 @@ export function applyGapLines(tailored, sourceForm, answer, { confirmedKeywords 
   let left = mode.maxEstimates - estimates.length;
   let applied = 0;
   const done = new Set();
+  // The dense bullets a line was already written beside, by this pass or an earlier one (below).
+  const spunOff = new Set(changes.map((c) => c.spunFrom).filter(Boolean));
   // Each line the merge refused, with why: for the bench and the logs, never stored.
   const rejected = [];
   const refuse = (line, reason) => rejected.push({ id: line.id, text: String(line.text || '').slice(0, 160), reason });
@@ -161,8 +166,10 @@ export function applyGapLines(tailored, sourceForm, answer, { confirmedKeywords 
       refuse(line, 'the estimate clause is not in the line');
       continue;
     }
-    const from = Number.isInteger(line.from) && role.achievements[line.from] !== undefined ? line.from : null;
-    const before = from !== null ? role.achievements[from] : '';
+    let from = Number.isInteger(line.from) && role.achievements[line.from] !== undefined ? line.from : null;
+    let before = from !== null ? role.achievements[from] : '';
+    // The dense bullet this line is written beside instead of rewriting (below), if any.
+    let spunFrom = '';
     // A bullet that already carries an estimate keeps it, and takes no second figure.
     const existing = from !== null ? estimates.find((e) => e.role === line.role && e.text === before) : null;
     const repeated = Boolean(clause) && estimates.some((e) => sameFigure(e.clause, clause));
@@ -190,7 +197,7 @@ export function applyGapLines(tailored, sourceForm, answer, { confirmedKeywords 
         text = withEstimate(text, existing.clause);
       }
     }
-    const copied = copiedRequirement(text, requirements, description);
+    const copied = copiedRequirement(text, requirements, description, { terms: [...protectedKeywords, ...assumedKeywords, ...confirmedKeywords] });
     // A word the resume itself uses is the candidate's, not an AI tell ("harness engineering").
     const tells = aiTellWords(text, structuredResumeToText(cleanStructuredResume(sourceForm)));
     if (inventsFact(judged, sources) || listLike(text) || copied || tells.length) {
@@ -199,7 +206,7 @@ export function applyGapLines(tailored, sourceForm, answer, { confirmedKeywords 
     }
     // The requirement paraphrased, with nothing of the role's own work in it (copied.js): not experience.
     const sourceRole = cleanStructuredResume(sourceForm).experience[line.role];
-    const echoed = echoesRequirement(text, requirements, (sourceRole?.achievements || []).join('\n'), { before });
+    const echoed = echoesRequirement(text, requirements, (sourceRole?.achievements || []).join('\n'), { before, terms: [...protectedKeywords, ...assumedKeywords, ...confirmedKeywords] });
     if (echoed) {
       refuse(line, `repeats the posting ("${echoed.slice(0, 60)}") without the role's own work`);
       continue;
@@ -218,8 +225,25 @@ export function applyGapLines(tailored, sourceForm, answer, { confirmedKeywords 
     }
     // Nor a figure or a name the bullet stated dropped, nor another role's bullet told again here (detail.js).
     if (before && losesDetail(before, text)) {
-      refuse(line, `drops what the bullet stated (${lostDetails(before, text).slice(0, 4).join(', ') || 'most of its wording'})`);
-      continue;
+      // A rewrite of a dense bullet that drops its details is most often another piece of that
+      // work told for the gap ("Built model-agnostic adapters and a multi-provider gateway…" from
+      // the runtime bullet that names 176 mechanisms): it goes in beside the bullet, which stays
+      // whole, and is held to a new bullet's checks below (the repeat check after them all).
+      // One such line a bullet: three lines that each opened "Architected the Flanders Make
+      // multi-agent orchestrator with…" said the bullet three times over.
+      // And only when it brings a job term the role does not show yet: a line beside the bullet
+      // that adds nothing the job asks for is the bullet said again.
+      const roleShows = role.achievements.join('\n');
+      const bringsTerm = termsIn(text, [...protectedKeywords, ...assumedKeywords, ...confirmedKeywords]).some((k) => !hasKeyword(roleShows, k));
+      if (denseBullet(before) && !existing && !spunOff.has(before) && bringsTerm) {
+        spunOff.add(before);
+        spunFrom = before;
+        from = null;
+        before = '';
+      } else {
+        refuse(line, `drops what the bullet stated (${lostDetails(before, text).slice(0, 4).join(', ') || 'most of its wording'})`);
+        continue;
+      }
     }
     const stack = newStackTerms(text, { before, sourceText: structuredResumeToText(cleanStructuredResume(sourceForm)), confirmed: [...confirmedKeywords, ...assumedKeywords] });
     if (stack.length) {
@@ -255,7 +279,7 @@ export function applyGapLines(tailored, sourceForm, answer, { confirmedKeywords 
       // together at the top of the role, and a reader, or a scorer that reads a role to a
       // limit, meets them before the bullets left as they were.
       role.achievements.splice(insertAt, 0, text);
-      changes.push({ role: line.role, kind: 'added', before: '', after: text });
+      changes.push({ role: line.role, kind: 'added', before: '', after: text, ...(spunFrom && { spunFrom }) });
     }
     if (stands) {
       estimates.push({ role: line.role, text, plain, clause: estimateClause(clause) });

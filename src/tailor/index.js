@@ -8,6 +8,7 @@
 export { buildGeneratePrompt, buildTailoringPrompt, buildTailorPrompt, GENERATE_SYSTEM_PROMPT, resumeBlock, TAILOR_SYSTEM_PROMPT } from './prompts/index.js';
 export { DEFAULT_TAILOR_STYLE, GENERATE_STYLE, PLAUSIBLE_BY_STYLE, TAILOR_MODES, TAILOR_STYLES, tailorMode, tailorStyle } from './style.js';
 export { tailoredResumeForm, withoutCuts } from './form.js';
+export { generatedResumeForm } from './generated.js';
 export { limitSkills } from './skills.js';
 export { resumeHeadline } from './headline.js';
 export { listSentences, MIN_SUMMARY_SENTENCES, MIN_SUMMARY_WORDS, summaryWithoutClaims, summaryWithoutLists, summaryWithSourceTenure, summaryWords, titleTerms } from './summary.js';

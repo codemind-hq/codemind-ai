@@ -5,6 +5,8 @@ import { complete } from '../llm/index.js';
 import { tailorEffort, withFallback } from '../llm/routing.js';
 import { applyGapLines, applyRepairs, buildGapPrompt, buildRepairPrompt, buildTailorPrompt, postingTerms, repairTargets, splitJobKeywords, tailoredResumeForm, tailorStyle } from './index.js';
 import { GAP_RESPONSE_FORMAT, REPAIR_RESPONSE_FORMAT, TAILOR_RESPONSE_FORMAT } from './schema.js';
+import { generatedResumeForm } from './generated.js';
+import { GENERATE_STYLE } from './style.js';
 
 // The tailoring calls: the rewrite, its repair round, and the gap pass.
 
@@ -48,21 +50,28 @@ export async function tailorResumeForm(
         ...(job?.preferredSkills || []),
         ...postingTerms(job?.description, [...(data?.jobKeywords || []), ...(scoring?.matchedKeywords || [])]),
       ].filter((k) => typeof k === 'string' && k.trim());
-      const tailored = tailoredResumeForm(form, data?.resume, {
-        confirmedKeywords,
-        // Either kind may stand in a line, and either is listed for the user to keep or remove.
-        assumedKeywords: [...assumedKeywords, ...optionalKeywords],
-        evidence,
-        blockedKeywords,
-        protectedKeywords,
-        style,
-        headline: data?.headline,
-        job,
-      });
-      if (!data?.resume || (tailored.form.experience.length > 0 && tailored.pairedExperience === 0)) {
+      // A new resume for the job is the model's answer as written (generated.js); a tailoring is
+      // checked line by line against the source (form.js).
+      const generated = style === GENERATE_STYLE;
+      const tailored = generated
+        ? generatedResumeForm(form, data?.resume, { headline: data?.headline })
+        : tailoredResumeForm(form, data?.resume, {
+            confirmedKeywords,
+            // Either kind may stand in a line, and either is listed for the user to keep or remove.
+            assumedKeywords: [...assumedKeywords, ...optionalKeywords],
+            evidence,
+            blockedKeywords,
+            protectedKeywords,
+            style,
+            headline: data?.headline,
+            job,
+          });
+      const sourceRoles = cleanStructuredResume(form).experience.length;
+      if (!data?.resume || (sourceRoles > 0 && tailored.pairedExperience === 0)) {
         throw AiError.upstream('The model did not return a rewritten resume');
       }
-      const final = await repairTailoring({ tailored, source: form, job, model, reasoningEffort, protectedKeywords, style, meta, serviceTier });
+      // The repair round reads each line against its source role: a generated resume's roles are lined up by employer.
+      const final = await repairTailoring({ tailored, source: generated ? tailored.source : form, job, model, reasoningEffort, protectedKeywords, style, meta, serviceTier });
       return {
         form: final.form,
         changes: final.changes,
@@ -189,7 +198,7 @@ export async function repairGapLines(tailored, form, job, lines, { confirmedKeyw
 async function repairTailoring({ tailored, source, job, model, reasoningEffort, protectedKeywords, style, meta, serviceTier }) {
   const requirements = Array.isArray(job?.requirements) ? job.requirements : [];
   const description = job?.description || '';
-  const targets = repairTargets(tailored, source, { requirements, description, style });
+  const targets = repairTargets(tailored, source, { requirements, description, style, terms: protectedKeywords });
   if (!targets.length) return tailored;
   try {
     const prompt = buildRepairPrompt(targets, { style });

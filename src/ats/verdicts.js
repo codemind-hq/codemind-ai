@@ -1,4 +1,6 @@
-import { hasKeyword } from '../text/keywords.js';
+import { hasKeyword, termForms } from '../text/keywords.js';
+import { canonicalSkill } from '../text/dict/skills.js';
+import { shows } from '../tailor/text.js';
 
 // ── Verdicts ───────────────────────────────────────────────────────────────
 //
@@ -37,13 +39,43 @@ function evidenceText(form) {
 export function skillVerdicts(resume, skills) {
   const seen = new Set();
   const unique = (skills || [])
-    .filter((s) => typeof s === 'string' && s.trim())
+    .filter((s) => typeof s === 'string' && s.trim() && !sentenceLike(s))
     .map((s) => s.trim())
     .filter((s) => !seen.has(s.toLowerCase()) && seen.add(s.toLowerCase()));
-  if (typeof resume === 'string') return unique.map((skill) => ({ skill, verdict: hasKeyword(resume, skill) ? 'met' : 'missing' }));
+  if (typeof resume === 'string') return unique.map((skill) => ({ skill, verdict: namedIn(resume, skill) ? 'met' : 'missing' }));
   const shown = evidenceText(resume || {});
   const listed = (resume?.skills || []).join(', ');
-  return unique.map((skill) => ({ skill, verdict: hasKeyword(shown, skill) ? 'met' : hasKeyword(listed, skill) ? 'weak' : 'missing' }));
+  return unique.map((skill) => ({ skill, verdict: namedIn(shown, skill) ? 'met' : namedIn(listed, skill, false) ? 'weak' : 'missing' }));
+}
+
+/**
+ * True when `text` names the skill: under any of its spellings ("MCP" for "Model Context Protocol
+ * (MCP)"), or, for a skill of two words or a long one, with all its words in one line in any form
+ * ("Investigated Redis incidents through traces" for "incident investigation"). A short one-word
+ * skill is held to its own spelling ("Go", "R"), which word forms would match too freely.
+ * `byLine` false matches spellings only.
+ */
+function namedIn(text, skill, byLine = true) {
+  const forms = termForms(skill);
+  if (forms.some((f) => hasKeyword(text, f))) return true;
+  if (!byLine) return false;
+  const lines = String(text || '').split('\n');
+  return forms.some((f) => (f.trim().split(/\s+/).length >= 2 || f.length >= MIN_STEMMED_CHARS) && lines.some((line) => shows(line, f)));
+}
+const MIN_STEMMED_CHARS = 6;
+
+// A job "skill" that is a sentence of the posting ("exposure of sensitive data", "metrics for
+// multi-step agent workflows"), not a name: it is judged as a requirement already, and as a skill
+// only its exact wording would meet it, which is the posting pasted in. A skill the dictionary
+// knows, or a name written in capitals ("Design of Experiments"), is a skill whatever its words.
+const SENTENCE_WORDS_RE = /\b(?:of|for|in|to|with|across|between|through|from|on|into|within|via)\b/i;
+const MAX_SKILL_WORDS = 4;
+export function sentenceLike(skill) {
+  const core = String(skill || '').replace(/\([^()]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!core || canonicalSkill(skill)) return false;
+  const words = core.split(' ');
+  if (words.filter((w) => w.length > 3).every((w) => /^[\p{Lu}\p{N}]/u.test(w))) return false;
+  return SENTENCE_WORDS_RE.test(core) || words.length > MAX_SKILL_WORDS;
 }
 
 // Words only, lower case, one space between: "Built  the  API (Go)." and "built the api go" are one quote.

@@ -1,7 +1,9 @@
-import { hasKeyword } from '../text/keywords.js';
+import { hasKeyword, termForms } from '../text/keywords.js';
 import { canonicalSkill } from '../text/dict/skills.js';
 import { addToSkillGroups, mergeSkillGroups, OTHER_CATEGORY } from '../resume/structuredResume.js';
 import { lower, squash, words } from './text.js';
+
+export { termForms };
 
 // ── Skills: relevance and count ────────────────────────────────────────────
 //
@@ -66,17 +68,6 @@ export const skillKey = (skill) => lower(skill).replace(/[^a-z0-9+#]+/g, '');
 // a skill of its own. One the resume itself lists stays; the rewrite never adds one.
 const GENERIC_SKILL_RE = /^(?:apis?|backend|back-end|frontend|front-end|cloud|software|code|coding|programming|development|systems?|platforms?|tools?|data|technology|engineering)$/i;
 
-/**
- * The spellings a skill or a job term goes by: itself, without its parentheses, and what the
- * parentheses hold. "Model Context Protocol (MCP)" is "MCP", so "MCP Protocol (stdio + HTTP)"
- * names it.
- */
-export function termForms(term) {
-  const text = squash(term);
-  const inner = [...text.matchAll(/\(([^()]+)\)/g)].map((m) => squash(m[1]));
-  const outer = squash(text.replace(/\([^()]*\)/g, ' '));
-  return [...new Set([text, outer, ...inner].filter((f) => f.length >= 2))];
-}
 /** True when `skill` and `term` name the same thing under any of their spellings (termForms). */
 export const namesSkill = (skill, term) => termForms(skill).some((s) => termForms(term).some((k) => hasKeyword(s, k) || hasKeyword(k, s)));
 

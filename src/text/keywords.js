@@ -107,3 +107,16 @@ export const uniqueKeywords = (list) => list.filter((k, i) => list.findIndex((ot
 export function keywordList(value) {
   return Array.isArray(value) ? value.filter((k) => typeof k === 'string' && k.trim()) : [];
 }
+
+/**
+ * The spellings a skill or a job term goes by: itself, without its parentheses, and what the
+ * parentheses hold. "Model Context Protocol (MCP)" is "MCP", so "MCP Protocol (stdio + HTTP)"
+ * names it. Shared by the scorer's skill verdicts (ats/verdicts.js) and tailoring's skills list.
+ */
+export function termForms(term) {
+  const squash = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+  const text = squash(term);
+  const inner = [...text.matchAll(/\(([^()]+)\)/g)].map((m) => squash(m[1]));
+  const outer = squash(text.replace(/\([^()]*\)/g, ' '));
+  return [...new Set([text, outer, ...inner].filter((f) => f.length >= 2))];
+}

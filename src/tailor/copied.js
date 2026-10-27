@@ -24,16 +24,19 @@ const ECHO_GENERIC = new Set(
  * the job's, `roleText` the bullets of the role the line is written into, as the resume had
  * them: what a real line about that role would name.
  */
-export function echoesRequirement(text, requirements = [], roleText = '', { before = '' } = {}) {
-  const line = contentWords(text);
+export function echoesRequirement(text, requirements = [], roleText = '', { before = '', terms = [] } = {}) {
+  // The job's own terms are the words the line was asked to use: they count on neither side, or a
+  // line about the role's Redis and SSE work that names "asynchronous workflows", "concurrency" and
+  // "fault tolerance" reads as the requirement that lists them.
+  const line = contentWords(withoutTerms(text, terms, ' ', 1));
   const role = contentWords(roleText);
-  const earlier = contentWords(before);
+  const earlier = contentWords(withoutTerms(before, terms, ' ', 1));
   // What the line brings: all of it for a new bullet, the new words for a rewrite.
   const fresh = [...line].filter((w) => !earlier.has(w));
   const anchored = (ws, req) => ws.some((w) => !req.has(w) && !ECHO_GENERIC.has(w) && role.has(w));
   for (const r of requirements) {
     const reqText = typeof r === 'string' ? r : r?.text;
-    const req = contentWords(reqText || '');
+    const req = contentWords(withoutTerms(reqText || '', terms, ' ', 1));
     if (req.size < ECHO_MIN_WORDS) continue;
     if (!before) {
       let shared = 0;
@@ -81,17 +84,37 @@ function sharedRun(line, from, size, substance) {
  * posting (`description`), the phrase of it the line repeats (POSTING_RUN words in a row); null
  * when the line is the candidate's own.
  */
-export function copiedRequirement(text, requirements = [], description = '') {
-  const line = stems(text);
+export function copiedRequirement(text, requirements = [], description = '', { terms = [] } = {}) {
+  // The job's own terms (`terms`: "prompt injection", "unsafe tool execution") are the words a line
+  // is asked to use: each is one word here, a different one on each side, so naming two of them
+  // in a row is not a run of the posting. Before, "Blocked prompt injection and unsafe tool
+  // execution…" was refused as a copy of "…including prompt injection, unsafe tool execution and…".
+  const own = (s) => withoutTerms(s, terms, 'qxline');
+  const theirs = (s) => withoutTerms(s, terms, 'zxpost');
+  const lineText = own(text);
+  const line = stems(lineText);
   for (const r of requirements) {
     const reqText = typeof r === 'string' ? r : r?.text;
-    const aboutAsLong = contentWords(text).size <= contentWords(reqText).size * REQUIREMENT_LENGTH_RATIO;
-    if (aboutAsLong && overlap(reqText, text) >= REQUIREMENT_OVERLAP) return reqText;
-    if (sharedRun(line, stems(reqText), REQUIREMENT_RUN, REQUIREMENT_RUN_SUBSTANCE)) return typeof r === 'string' ? r : r.text;
+    const req = theirs(reqText);
+    const aboutAsLong = contentWords(lineText).size <= contentWords(req).size * REQUIREMENT_LENGTH_RATIO;
+    if (aboutAsLong && overlap(req, lineText) >= REQUIREMENT_OVERLAP) return reqText;
+    if (sharedRun(line, stems(req), REQUIREMENT_RUN, REQUIREMENT_RUN_SUBSTANCE)) return typeof r === 'string' ? r : r.text;
   }
   if (description) {
-    const run = sharedRun(line, stems(description), POSTING_RUN, POSTING_RUN_SUBSTANCE);
+    const run = sharedRun(line, stems(theirs(description)), POSTING_RUN, POSTING_RUN_SUBSTANCE);
     if (run) return run;
   }
   return null;
+}
+
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** `text` with every one of `terms` of `minWords` words or more replaced by `word` (a space removes them). */
+function withoutTerms(text, terms, word, minWords = 2) {
+  let out = String(text || '');
+  for (const term of terms || []) {
+    if (typeof term !== 'string' || !term.trim() || term.trim().split(/\s+/).length < minWords) continue;
+    const body = term.trim().split(/[-_\s]+/).map(escapeRegex).join('[-_\\s]+');
+    out = out.replace(new RegExp(`(?<![\\p{L}\\p{N}])${body}(?![\\p{L}\\p{N}])`, 'giu'), ` ${word} `);
+  }
+  return out;
 }

@@ -1,14 +1,20 @@
-import { hasKeyword, skillFit } from '../text/keywords.js';
+import { hasKeyword } from '../text/keywords.js';
 import { structuredResumeToText } from '../resume/structuredResume.js';
 import { breakdownFrom, combineBreakdown } from './breakdown.js';
 import { checkedVerdicts, heldVerdicts, skillVerdicts } from './verdicts.js';
 
 // What the code decides from the model's answer: the stored match fields.
 
-/** The job's skills checked verbatim against the resume — the same skillFit the Jobs page shows. */
+/** The job's skills checked against the resume as the scorer checks them (verdicts.js skillVerdicts). */
 export function verifiedSkills(job, resumeText) {
-  const required = skillFit(resumeText, job?.skills || []);
-  const preferred = skillFit(resumeText, job?.preferredSkills || []);
+  // Judged as the scorer judges them (verdicts.js skillVerdicts): what the rewrite is told is
+  // missing is what the score counts missing, and a sentence of the posting is not a skill to paste in.
+  const fit = (skills) => {
+    const verdicts = skillVerdicts(resumeText, skills);
+    return { have: verdicts.filter((v) => v.verdict === 'met').map((v) => v.skill), missing: verdicts.filter((v) => v.verdict !== 'met').map((v) => v.skill) };
+  };
+  const required = fit(job?.skills || []);
+  const preferred = fit(job?.preferredSkills || []);
   return {
     required: { listed: required.have.length + required.missing.length, foundCount: required.have.length, found: required.have, notFound: required.missing },
     preferred: { found: preferred.have, notFound: preferred.missing },

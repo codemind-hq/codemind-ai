@@ -51,6 +51,12 @@ function pairEntries(sourceEntries, written, rules) {
   return pairs;
 }
 
+/** A role title the model wrote, as one line of at most 100 characters; '' when it wrote none. */
+function writtenTitle(title) {
+  const line = String(title || '').replace(/\s+/g, ' ').trim();
+  return line.length <= 100 ? line : '';
+}
+
 const EXPERIENCE_RULES = [
   (a, b) => sameName(a.company, b.company) && sameFact(a.period, b.period),
   (a, b) => sameName(a.company, b.company) && sameFact(a.title, b.title),
@@ -119,7 +125,10 @@ export function tailoredResumeForm(
   // The form's cleaning flattens bullets to strings, so the traced ones are read from the answer itself.
   const writtenRoles = (Array.isArray(written?.experience) ? written.experience : [])
     .filter((e) => e && typeof e === 'object')
-    .map((e) => ({ company: lower(e.company), title: lower(e.title), period: lower(e.period), bullets: writtenBullets(e.achievements) }));
+    .map((e) => ({ company: lower(e.company), title: lower(e.title), period: lower(e.period), bullets: writtenBullets(e.achievements), writtenTitle: writtenTitle(e.title) }));
+  // A role shows the title the model wrote for it, in every mode; the resume's own when it wrote
+  // none. Employer and dates stay the source's.
+  const titleOf = (entry, written) => written?.writtenTitle || entry.title;
   const roles = pairEntries(source.experience, writtenRoles, EXPERIENCE_RULES);
   let changes = [];
   let estimated = [];
@@ -145,7 +154,7 @@ export function tailoredResumeForm(
     });
     changes.push(...traced.changes.map((c) => ({ role, ...c })));
     estimated.push(...budget.list.filter((e) => traced.bullets.includes(e.text)).map((e) => ({ role, ...e })));
-    return { ...entry, achievements: traced.bullets };
+    return { ...entry, title: titleOf(entry, roles[role]), achievements: traced.bullets };
   });
   // The same work said twice, in one role or across two, is said once (detail.js).
   const deduped = withoutRepeatedBullets({ form: { experience: tracedRoles }, changes, estimates: estimated }, protectedKeywords);

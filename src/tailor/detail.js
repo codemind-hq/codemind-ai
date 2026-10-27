@@ -107,11 +107,13 @@ const ownWords = (a, b) => {
   const theirs = contentWords(b);
   return [...contentWords(String(a).trim().replace(/^\S+\s*/, ''))].filter((w) => !theirs.has(w));
 };
+// This much shared and the two say the same thing whatever word each adds ("Built model-agnostic
+// adapters and a multi-provider gateway for Anthropic, OpenAI and Ollama" twice, one naming Cogentrex).
+const NEAR_COPY = 0.85;
 const repeats = (a, b) =>
   Math.min(contentWords(a).size, contentWords(b).size) >= MIN_REPEAT_WORDS &&
-  sameWording(a, b) >= REPEATED_BULLET &&
-  !(lostDetails(a, b).length && lostDetails(b, a).length) &&
-  !(ownWords(a, b).length && ownWords(b, a).length);
+  (sameWording(a, b) >= NEAR_COPY ||
+    (sameWording(a, b) >= REPEATED_BULLET && !(lostDetails(a, b).length && lostDetails(b, a).length) && !(ownWords(a, b).length && ownWords(b, a).length)));
 
 /**
  * The tailoring with every bullet that repeats another taken out, anywhere in the resume: of

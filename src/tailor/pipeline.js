@@ -5,7 +5,7 @@ import { fillTailoringGaps, repairGapLines, tailorResumeForm } from './service.j
 import { markAnswered } from './requirements.js';
 import { unbackedStackTerms } from './stack.js';
 import { withinPageBudget } from './pages.js';
-import { postingTerms, splitAssumedTerms, tailorMode, tailorStyle, withoutCuts } from './index.js';
+import { GENERATE_STYLE, postingTerms, splitAssumedTerms, tailorMode, tailorStyle, withoutCuts } from './index.js';
 
 // The whole tailoring of one resume for one job, as the calls run it: the source scored (unless
 // a score is handed in), the rewrite, the rewrite scored against the source's own verdicts, the
@@ -25,9 +25,8 @@ import { postingTerms, splitAssumedTerms, tailorMode, tailorStyle, withoutCuts }
 // of four, at the cost of the per-pass gate, which the scorer's own noise makes a weak one.
 const SCORE_NOISE = 3;
 export const SCORE_ROUNDS = ['each', 'ends'];
-// 'ends' passes: a gap is asked at most this often, and a pass landing fewer lines is the last.
+// 'ends' passes: a gap whose lines were refused this often is not asked again.
 const MAX_GAP_TRIES = 2;
-const MIN_PASS_LINES = 2;
 const metCount = (scoring) =>
   [...(scoring?.requirements || []), ...(scoring?.requiredSkillVerdicts || []), ...(scoring?.preferredSkillVerdicts || [])].filter((v) => v?.verdict === 'met').length;
 /** True when the gap pass that produced `next` moved the tailoring forward from `prior`. */
@@ -118,6 +117,9 @@ export async function runTailoring({
   const beforeRequirements = typeof before.toObject === 'function' ? before.toObject().requirements : before.requirements;
   const prior = beforeRequirements?.length ? { requirements: beforeRequirements, resumeText: structuredResumeToText(form) } : null;
   let after = await quickScoreResume(tailored.form, job, meta, { prior, serviceTier });
+  // A new resume for the job is the model's answer and its repair round (service.js): scored, and
+  // nothing after this changes it — no cuts put back, no gap passes, no page budget.
+  if (style === GENERATE_STYLE) return { before, after, tailored, style, confirmed, candidates, assumed, assumedAll, split };
   // A rewrite that scores below the resume it started from lost more by cutting than it gained
   // by rewording. Put the cuts back, keep the rewording, and keep whichever scores higher.
   if (after.score < before.score && tailored.changes.some((c) => c.kind === 'removed')) {
@@ -169,8 +171,8 @@ export async function runTailoring({
     let applied = 0;
     // How often each gap was answered with a line the checks refused. A Staff AI Engineer
     // tailoring asked four passes for the same 13-20 lines and kept one or two a pass: a gap
-    // refused MAX_GAP_TRIES times is not asked again, and a pass that lands fewer than
-    // MIN_PASS_LINES is the last, since the next would ask what this one could not answer.
+    // refused MAX_GAP_TRIES times is not asked again. (Stopping after a pass that landed one line
+    // was tried and cut the second pass every time, costing duty verdicts.)
     const refused = new Map();
     // Lines refused for repeating the posting are reworded by one repair call after the last
     // pass, not one per pass (each found a handful): the gaps the passes answered since are left out.
@@ -188,7 +190,6 @@ export async function runTailoring({
         for (const r of filled.rejected || []) if (Number.isInteger(r.id) && !answered.has(r.id)) refused.set(r.id, (refused.get(r.id) || 0) + 1);
         const spent = [...refused].filter(([, n]) => n >= MAX_GAP_TRIES).map(([id]) => id);
         verdicts = markAnswered(verdicts, [...answered, ...spent], { preferred: mode.preferredGaps });
-        if (filled.applied < MIN_PASS_LINES) break;
       } catch {
         break; // the attempt so far stands
       }

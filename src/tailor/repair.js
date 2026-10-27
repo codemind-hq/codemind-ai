@@ -27,7 +27,7 @@ const REPAIR_MAX_LINES = 8;
  * A bullet (the default) is also held to its length and to not being a list of tools; the
  * summary (`summary: true`) has its own length and list rules (summaryProblems).
  */
-function lineProblems(text, { requirements = [], description = '', summary = false, roleText = null, before = '', ownText = '' } = {}) {
+function lineProblems(text, { requirements = [], description = '', summary = false, roleText = null, before = '', ownText = '', terms = [] } = {}) {
   const problems = [];
   // A word the resume itself uses (`ownText`) is the candidate's, not an AI tell.
   const words = aiTellWords(text, ownText);
@@ -36,10 +36,11 @@ function lineProblems(text, { requirements = [], description = '', summary = fal
   if (!summary && text.length > Math.max(MAX_BULLET_CHARS, before.length)) problems.push(`it is ${text.length} characters; keep it under ${MAX_BULLET_CHARS}`);
   // What the scorer (score/verdicts.js) counts as a mention and not evidence.
   if (!summary && listLike(text)) problems.push('it reads as a list of tools; keep them, and say what was built or run with them');
-  const copied = copiedRequirement(text, requirements, description);
+  // The job's terms are words a line may use, not a copy of the posting (copied.js).
+  const copied = copiedRequirement(text, requirements, description, { terms });
   if (copied) problems.push(`it repeats the posting's wording ("${copied.slice(0, 80)}"); say what the candidate did, naming the product or system`);
   // A bullet that answers a requirement in the requirement's words with nothing of the role's own (copied.js).
-  const echoed = !copied && roleText !== null ? echoesRequirement(text, requirements, roleText, { before }) : null;
+  const echoed = !copied && roleText !== null ? echoesRequirement(text, requirements, roleText, { before, terms }) : null;
   if (echoed) {
     problems.push(
       `it says the requirement back ("${echoed.slice(0, 80)}") without naming any work of this role; make it a real piece of work — name the product, pipeline, service or client this role's other bullets name, and what was done to it, with the requirement's term as the tool used once`
@@ -55,8 +56,8 @@ function lineProblems(text, { requirements = [], description = '', summary = fal
  * MIN_SUMMARY_WORDS words. A summary that says less than the source's did is the most common
  * form of that: "the summary too short" was what a 74-point tailoring looked like.
  */
-function summaryProblems(text, { requirements = [], description = '', sentences = [3, 4], ownText = '' } = {}) {
-  const problems = lineProblems(text, { requirements, description, summary: true, ownText });
+function summaryProblems(text, { requirements = [], description = '', sentences = [3, 4], ownText = '', terms = [] } = {}) {
+  const problems = lineProblems(text, { requirements, description, summary: true, ownText, terms });
   const lists = listSentences(text);
   if (lists.length) problems.push(`"${lists[0].trim().slice(0, 80)}" reads as a list of tools; keep the technologies, inside a sentence about the work done with them`);
   const figures = summaryFigures(text);
@@ -81,13 +82,13 @@ function summaryProblems(text, { requirements = [], description = '', sentences 
  * null for the summary. `requirements` are the job's (workspace/service.js anchoredJob), for
  * the lines that repeat one; `style` the mode, for the summary's length.
  */
-export function repairTargets(tailored, sourceForm, { requirements = [], description = '', style } = {}) {
+export function repairTargets(tailored, sourceForm, { requirements = [], description = '', style, terms = [] } = {}) {
   const targets = [];
   const summary = tailored.form.summary || '';
   const ownText = sourceForm ? structuredResumeToText(sourceForm) : '';
   if (summary && lower(summary) !== lower(sourceForm?.summary)) {
-    const problems = summaryProblems(summary, { requirements, description, sentences: tailorMode(style).summarySentences, ownText });
-    if (problems.length) targets.push({ role: null, text: summary, problems, ownText });
+    const problems = summaryProblems(summary, { requirements, description, sentences: tailorMode(style).summarySentences, ownText, terms });
+    if (problems.length) targets.push({ role: null, text: summary, problems, ownText, terms });
   }
   // A line with an estimate is the candidate's to edit; a repair would lose track of its clause.
   const estimated = new Set((tailored.estimates || []).map((e) => e.text));
@@ -97,8 +98,8 @@ export function repairTargets(tailored, sourceForm, { requirements = [], descrip
     if (change.kind === 'removed' || !change.after || estimated.has(change.after)) continue;
     const roleText = roleTextOf(change.role);
     const before = change.before || '';
-    const problems = lineProblems(change.after, { requirements, description, roleText, before, ownText });
-    if (problems.length) targets.push({ role: change.role, text: change.after, problems, roleText, before, ownText });
+    const problems = lineProblems(change.after, { requirements, description, roleText, before, ownText, terms });
+    if (problems.length) targets.push({ role: change.role, text: change.after, problems, roleText, before, ownText, terms });
   }
   return targets.slice(0, REPAIR_MAX_LINES).map((t, id) => ({ id, ...t }));
 }
@@ -143,7 +144,7 @@ export function applyRepairs(tailored, targets, answer, { protectedKeywords = []
     const text = byId.get(target.id);
     if (!text || text === target.text) continue;
     const ownText = target.ownText || '';
-    const problems = target.role === null ? summaryProblems(text, { requirements, description, sentences, ownText }) : lineProblems(text, { requirements, description, roleText: target.roleText ?? null, before: target.before || '', ownText });
+    const problems = target.role === null ? summaryProblems(text, { requirements, description, sentences, ownText, terms: target.terms || [] }) : lineProblems(text, { requirements, description, roleText: target.roleText ?? null, before: target.before || '', ownText, terms: target.terms || [] });
     const better = problems.length < target.problems.length;
     const keepsTerms = !protectedKeywords.some((k) => hasKeyword(target.text, k) && !hasKeyword(text, k));
     // A bullet keeps its figures and names (detail.js); a summary may let figures go, since the bullets carry them.
