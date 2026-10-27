@@ -554,5 +554,7 @@ Voice:
 LINES:
 0. Lead incident response and drive postmortem outcomes for the data platform.
    Problem: it repeats the posting's wording; say what the candidate did, naming the product or system, in their own words.
+1. Defined the core data models for finance reporting, cutting warehouse spend by ~15%.
+   Problem: it drops what the bullet it rewrites stated; keep every one of these, as the bullet has them: 6, 90. The bullet: "Cut nightly batch runtime from 6 hours to 90 minutes.".
 
 Answer with every line, under its number as "id".

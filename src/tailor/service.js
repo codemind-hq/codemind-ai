@@ -5,6 +5,7 @@ import { complete } from '../llm/index.js';
 import { tailorEffort, withFallback } from '../llm/routing.js';
 import { applyGapLines, applyRepairs, buildGapPrompt, buildRepairPrompt, buildTailorPrompt, postingTerms, repairTargets, splitJobKeywords, tailoredResumeForm, tailorStyle } from './index.js';
 import { GAP_RESPONSE_FORMAT, REPAIR_RESPONSE_FORMAT, TAILOR_RESPONSE_FORMAT } from './schema.js';
+import { lostDetails } from './detail.js';
 import { generatedResumeForm } from './generated.js';
 import { GENERATE_STYLE } from './style.js';
 
@@ -135,18 +136,35 @@ const gapLineOptions = (job, { confirmedKeywords = [], evidence = [], assumedKey
   description: job?.description || '',
   style,
 });
-const isCopied = (r) => r.reason.startsWith('repeats the posting');
+const COPIED_PROBLEM = "it repeats the posting's wording; say what the candidate did, naming the product or system, in their own words";
+const copiedRefusal = (r) => r.reason.startsWith('repeats the posting');
+// A rewrite that recasts a bullet for the job but drops what it stated ("Built LLM-based agents…"
+// in place of the React Native, Swift and UIKit work it was): sent back to keep those facts, so the
+// line says the job's terms about the bullet's own work rather than about other work.
+const droppedRefusal = (r) => r.reason.startsWith('drops what the bullet stated');
+const isCopied = (r) => copiedRefusal(r) || droppedRefusal(r);
+// At most this many refused lines go to the one repair call, one a gap.
+const MAX_REPAIR_LINES = 12;
 
 /**
- * The lines of a gap answer refused for repeating the posting's wording, each with the bullet it
- * rewrote as it read then (`target`, null for a new line): a later pass may have moved that
- * bullet, so the repair finds it again by its text.
+ * The lines of a gap answer worth one more try: refused for repeating the posting's wording, or for
+ * dropping a figure or a name the bullet they rewrote stated. Each carries the bullet as it read then
+ * (`target`, null for a new line: a later pass may have moved it, so the repair finds it again by
+ * its text) and the problem the repair is told (`problem`).
  */
 function copiedLines(data, rejected, formBefore) {
-  const ids = new Set((rejected || []).filter(isCopied).map((r) => r.id));
+  const reasons = new Map((rejected || []).filter(isCopied).map((r) => [r.id, r]));
   return (Array.isArray(data?.lines) ? data.lines : [])
-    .filter((l) => l && ids.has(l.id))
-    .map((l) => ({ ...l, target: Number.isInteger(l.from) ? (formBefore.experience?.[l.role]?.achievements?.[l.from] ?? null) : null }));
+    .filter((l) => l && reasons.has(l.id))
+    .map((l) => {
+      const target = Number.isInteger(l.from) ? (formBefore.experience?.[l.role]?.achievements?.[l.from] ?? null) : null;
+      if (!droppedRefusal(reasons.get(l.id)) || !target) return { ...l, target, problem: COPIED_PROBLEM };
+      const lost = lostDetails(target, l.text);
+      const keep = lost.length
+        ? `it drops what the bullet it rewrites stated; keep every one of these, as the bullet has them: ${lost.join(', ')}`
+        : "it rewrites a bullet dense with figures and names too far; keep the bullet's own wording and work the job's term into it";
+      return { ...l, target, problem: `${keep}. The bullet: "${target}"` };
+    });
 }
 
 /**
@@ -159,8 +177,10 @@ function copiedLines(data, rejected, formBefore) {
  */
 export async function repairGapLines(tailored, form, job, lines, { confirmedKeywords = [], evidence = [], assumedKeywords = [], protectedKeywords = [], style, model, meta = {}, serviceTier, answered = [] }) {
   const done = new Set(answered);
+  const seen = new Set();
   const open = lines
-    .filter((l) => !done.has(l.id))
+    .filter((l) => !done.has(l.id) && !seen.has(l.id) && seen.add(l.id))
+    .slice(0, MAX_REPAIR_LINES)
     .map((l) => {
       if (l.target === null) return { ...l, from: null };
       const at = tailored.form.experience?.[l.role]?.achievements?.indexOf(l.target) ?? -1;
@@ -170,7 +190,7 @@ export async function repairGapLines(tailored, form, job, lines, { confirmedKeyw
   const none = { ...tailored, applied: 0, rejected: [], answered: [] };
   if (!open.length) return none;
   try {
-    const targets = open.map((l, id) => ({ id, role: l.role, text: l.text, problems: ['it repeats the posting\'s wording; say what the candidate did, naming the product or system, in their own words'] }));
+    const targets = open.map((l, id) => ({ id, role: l.role, text: l.text, problems: [l.problem || COPIED_PROBLEM] }));
     const prompt = buildRepairPrompt(targets, { style });
     const { data: fixed } = await complete(
       { model, reasoningEffort: tailorEffort(model), system: prompt.system, user: prompt.user, json: true, responseFormat: REPAIR_RESPONSE_FORMAT, temperature: 0.2, serviceTier },
