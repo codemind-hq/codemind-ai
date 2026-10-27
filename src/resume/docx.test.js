@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Packer } from 'docx';
 import JSZip from 'jszip';
-import { buildCoverLetterDocx, buildResumeDocx, estimatePages, formResumeModel, parseTailoredResume } from './docx.js';
+import { buildCoverLetterDocx, buildResumeDocx, estimatePages, fittedTemplate, formResumeModel, parseTailoredResume } from './docx.js';
 import { DEFAULT_TEMPLATE, listResumeTemplates, RESUME_TEMPLATES, resumeTemplate, TEMPLATE_IDS } from './templates.js';
 
 // What the tailoring model writes today, including the stray "Details" label a two-column
@@ -168,7 +168,8 @@ test('the page estimate tells one page from two, and the compact layout from the
   const long = formResumeModel({ ...TAILORED_FORM, experience: Array.from({ length: 4 }, (_, i) => ({ company: `Company ${i}`, title: 'Engineer', period: '2019 – 2021', achievements: bullets })) });
   const pages = Object.fromEntries(TEMPLATE_IDS.map((id) => [id, estimatePages(long, id)]));
   assert.ok(pages.classic > 1.5 && pages.classic < 3.5, `about two pages, got ${pages.classic}`);
-  assert.ok(pages.compact < pages.modern && pages.modern <= pages.classic, 'compact is the tightest');
+  // Classic and Modern may swap places: either may be fitted tighter to end a page sooner (fittedTemplate).
+  assert.ok(pages.compact < Math.min(pages.modern, pages.classic), `compact is the tightest: ${JSON.stringify(pages)}`);
   assert.equal(estimatePages(formResumeModel(null), 'classic'), 0.1);
 });
 
@@ -199,4 +200,28 @@ test('a cover letter keeps its paragraphs and line breaks, in the template font'
   assert.match(xml, /Best regards,<\/w:t><\/w:r><w:r><w:br\/><w:t[^>]*>Jo Doe/);
   const styles = await zip.file('word/styles.xml').async('string');
   assert.match(styles, /Calibri/);
+});
+
+test('dates that fit beside the title sit at the right margin; ones that do not go on the next line, never against the name', async () => {
+  const xmlOf = async (form, id = 'classic') => (await JSZip.loadAsync(await Packer.toBuffer(buildResumeDocx(formResumeModel(form), id)))).file('word/document.xml').async('string');
+  const short = await xmlOf({ name: 'A', experience: [{ company: 'Acme', title: 'Engineer', period: '2019 – 2021', achievements: ['Built things.'] }] });
+  assert.match(short, /<w:tab w:val="right" w:pos="9602"\/>/, 'the tab stop is the A4 text edge, 11906 less two 0.8-inch margins');
+  assert.match(short, /<w:t xml:space="preserve">\t2019 – 2021<\/w:t>/);
+  // "HarmoniqHubDec 2024 - Present" in Word: the title left the right tab no room.
+  const long = await xmlOf({ name: 'A', experience: [{ company: 'HarmoniqHub', title: 'Founder and Lead AI Engineer, Music Intelligence Platform', period: 'Dec 2024 - Present', achievements: ['Built things.'] }] });
+  assert.match(long, /<w:br\/><w:t xml:space="preserve">Dec 2024 - Present<\/w:t>/);
+  assert.doesNotMatch(long, /\tDec 2024/);
+});
+
+test('a resume that would spill a few lines onto a last page is set tighter to end a page sooner; one well into it is left alone', () => {
+  const bullet = 'Built and operated the billing data service on AWS, cutting the nightly run from six hours to under one for three product teams.';
+  const form = (n) => ({ ...TAILORED_FORM, experience: Array.from({ length: 4 }, (_, i) => ({ company: `Company ${i}`, title: 'Engineer', period: '2019 – 2021', achievements: Array.from({ length: n }, () => bullet) })) });
+  const spill = [8, 9, 10, 11, 12].map(form).find((f) => {
+    const pages = estimatePages(formResumeModel(f), 'classic');
+    return fittedTemplate(formResumeModel(f), 'classic') !== RESUME_TEMPLATES.classic && pages <= 2;
+  });
+  assert.ok(spill, 'one of these runs a few lines onto a third page and is fitted back to two');
+  const fitted = fittedTemplate(formResumeModel(spill), 'classic');
+  assert.ok(fitted.spacing.sectionBefore < RESUME_TEMPLATES.classic.spacing.sectionBefore, 'spacing gives first');
+  assert.equal(fittedTemplate(formResumeModel(TAILORED_FORM), 'classic'), RESUME_TEMPLATES.classic, 'a one-page resume keeps its template');
 });

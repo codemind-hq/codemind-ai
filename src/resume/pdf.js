@@ -1,4 +1,5 @@
 import { resumeTemplate } from './templates.js';
+import { fittedTemplate } from './docx.js';
 
 // pdfkit is loaded on the first PDF drawn, not with the module: it brings its font parser and the
 // standard fonts' metrics, a good deal of heap, and most processes (a worker, a web process whose
@@ -55,7 +56,8 @@ export function pdfDropsLetters(text) {
 /** Draw a document model (docx.js formResumeModel / parseTailoredResume) as a PDF. Resolves to its bytes. */
 export async function renderResumePdf({ model, template }) {
   const PDFDocument = await loadPdfDocument();
-  const t = resumeTemplate(template);
+  // Set as the .docx is: a last page of a few spilled lines is fitted back (docx.js fittedTemplate).
+  const t = fittedTemplate(model, template);
   const margin = t.margins * 72;
   const doc = new PDFDocument({
     size: 'LETTER',

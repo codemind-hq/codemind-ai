@@ -2,6 +2,7 @@ import { hasKeyword } from '../text/keywords.js';
 import { cleanListItem } from '../resume/structuredResume.js';
 import { claimsClearance, claimsCredential, inventsFact } from './claims.js';
 import { borrowedBullet, losesDetail } from './detail.js';
+import { newStackTerms } from './stack.js';
 import { estimateClause, overstatedEstimate, sameFigure, withoutEstimate } from './estimates.js';
 import { crossesPlatform, gluedTerm, tooManyTerms } from './terms.js';
 import { lower, overlap, RELATED, SAME_WORDING, sameWording, termsIn, unique } from './text.js';
@@ -54,12 +55,14 @@ export function writtenBullets(achievements) {
 export function traceBullets(
   sourceBullets,
   written,
-  { confirmed, assumed = [], blocked = [], sources, protectedKeywords = [], newBullets = 0, limits = {}, estimates = { left: 0, list: [] }, elsewhere = [], jobText = '' }
+  { confirmed, assumed = [], blocked = [], sources, protectedKeywords = [], newBullets = 0, limits = {}, estimates = { left: 0, list: [] }, elsewhere = [], jobText = '', sourceText = '' }
 ) {
   const kept = [];
   const changes = [];
   const used = new Set();
   const borrowed = (text) => Boolean(borrowedBullet(text, { ownText: sourceBullets.join('\n'), elsewhere, jobText }));
+  // A language, cloud or container platform the resume never names (stack.js), whoever offered it.
+  const newStack = (text, before = '') => newStackTerms(text, { before, sourceText, confirmed: [...confirmed, ...assumed] }).length > 0;
   // The assumed terms the role's kept lines carry so far: a line that brings more than a line
   // may, or takes the role past its cap (terms.js), reads as the posting pasted in, and is
   // refused as a rewrite is (the source bullet stands). So is a line that is the source bullet
@@ -81,7 +84,7 @@ export function traceBullets(
   let fresh = 0;
   const mayStand = (text) => !blocked.some((k) => hasKeyword(text, k)) && (mentionsAdded(text) || fresh < newBullets);
   const added = (text) => {
-    if (tooDense(text) || borrowed(text)) return;
+    if (tooDense(text) || borrowed(text) || newStack(text)) return;
     if (!mentionsAdded(text)) fresh += 1;
     kept.push(text);
     noteTerms(text);
@@ -133,6 +136,7 @@ export function traceBullets(
       !losesEvidence(before, plain, protectedKeywords) &&
       !losesDetail(before, plain) &&
       !borrowed(plain) &&
+      !newStack(plain, before) &&
       !tooDense(plain, before) &&
       !crossesPlatform(before, plain, assumed) &&
       !claimsClearance(plain) &&
@@ -155,6 +159,7 @@ export function traceBullets(
       losesEvidence(before, bullet.text, protectedKeywords) ||
       (resembles && saysLess) ||
       borrowed(bullet.text) ||
+      newStack(bullet.text, before) ||
       tooDense(bullet.text, before) ||
       crossesPlatform(before, bullet.text, assumed) ||
       claimsClearance(bullet.text);

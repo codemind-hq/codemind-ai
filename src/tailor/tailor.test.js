@@ -105,7 +105,8 @@ test('a keyword the user declined to confirm stays out of the skills list, and s
   const bare = tailoredResumeForm(SOURCE, WRITTEN).form;
   assert.deepEqual(bare.skills, ['Python', 'PostgreSQL'], "repeats collapse; the job's spelling of a skill is allowed; Kubernetes, in no bullet or summary, is a bare claim and comes off");
   const shown = { ...WRITTEN, summary: 'Senior data engineer with 8 years building Python data services on AWS and Kubernetes.' };
-  const open = tailoredResumeForm(SOURCE, shown).form;
+  // Kubernetes is a platform the resume never shows (stack.js): it stands only as a term the tailoring was let assume.
+  const open = tailoredResumeForm(SOURCE, shown, { assumedKeywords: ['Kubernetes'] }).form;
   assert.deepEqual(open.skills, ['Python', 'PostgreSQL', 'Kubernetes'], 'named in the summary, it stays');
   const blocked = tailoredResumeForm(SOURCE, shown, { blockedKeywords: ['Kubernetes'] }).form;
   assert.deepEqual(blocked.skills, ['Python', 'PostgreSQL']);
@@ -157,26 +158,26 @@ test('every bullet is traced to its source, and what changed is reported for rev
 test('a bullet from nowhere stands within the mode\'s allowance, listed as added; one that names a declined keyword never does', () => {
   const written = role([
     { text: 'Built data services on AWS.', from: 0 },
-    { text: 'Led a platform migration to Kubernetes.', from: null },
+    { text: 'Led a platform migration to Kafka.', from: null },
     { text: 'Ran the quarterly planning for the platform group.', from: null },
   ]);
   // Balanced (the default) and score first take any number of new lines a role; looking real first takes one.
   const balanced = tailoredResumeForm(SOURCE, written);
-  assert.deepEqual(balanced.form.experience[0].achievements, ['Built data services on AWS.', 'Led a platform migration to Kubernetes.', 'Ran the quarterly planning for the platform group.']);
+  assert.deepEqual(balanced.form.experience[0].achievements, ['Built data services on AWS.', 'Led a platform migration to Kafka.', 'Ran the quarterly planning for the platform group.']);
   assert.deepEqual(
     balanced.changes.filter((c) => c.kind === 'added').map((c) => c.after),
-    ['Led a platform migration to Kubernetes.', 'Ran the quarterly planning for the platform group.'],
+    ['Led a platform migration to Kafka.', 'Ran the quarterly planning for the platform group.'],
     'each is listed on its own, so each can be taken out on its own'
   );
   const realistic = tailoredResumeForm(SOURCE, written, { style: 'realistic' });
-  assert.deepEqual(realistic.form.experience[0].achievements, ['Built data services on AWS.', 'Led a platform migration to Kubernetes.'], 'one new line a role, the first');
+  assert.deepEqual(realistic.form.experience[0].achievements, ['Built data services on AWS.', 'Led a platform migration to Kafka.'], 'one new line a role, the first');
 
-  const declined = tailoredResumeForm(SOURCE, written, { blockedKeywords: ['Kubernetes'] });
-  assert.ok(!declined.form.experience[0].achievements.some((b) => b.includes('Kubernetes')), 'a keyword the user switched off is never written in');
+  const declined = tailoredResumeForm(SOURCE, written, { blockedKeywords: ['Kafka'] });
+  assert.ok(!declined.form.experience[0].achievements.some((b) => b.includes('Kafka')), 'a keyword the user switched off is never written in');
 
-  const confirmed = tailoredResumeForm(SOURCE, written, { confirmedKeywords: ['Kubernetes'], style: 'realistic' });
-  assert.deepEqual(confirmed.form.experience[0].achievements, ['Built data services on AWS.', 'Led a platform migration to Kubernetes.', 'Ran the quarterly planning for the platform group.'], 'a confirmed keyword\'s line is not counted against the allowance');
-  assert.deepEqual(confirmed.changes.filter((c) => c.kind === 'added').map((c) => c.after), ['Led a platform migration to Kubernetes.', 'Ran the quarterly planning for the platform group.']);
+  const confirmed = tailoredResumeForm(SOURCE, written, { confirmedKeywords: ['Kafka'], style: 'realistic' });
+  assert.deepEqual(confirmed.form.experience[0].achievements, ['Built data services on AWS.', 'Led a platform migration to Kafka.', 'Ran the quarterly planning for the platform group.'], 'a confirmed keyword\'s line is not counted against the allowance');
+  assert.deepEqual(confirmed.changes.filter((c) => c.kind === 'added').map((c) => c.after), ['Led a platform migration to Kafka.', 'Ran the quarterly planning for the platform group.']);
 });
 
 test('a bullet that cites a source it does not resemble is put back as the resume said it, and stands beside it as a new line', () => {
@@ -203,7 +204,7 @@ test('a tenure the dates cannot reach, a figure off by a magnitude, or a certifi
   assert.equal(summary('Engineer who shipped an iOS app with 40,000 installs.'), 'Engineer who shipped an iOS app with 40,000 installs.', '40k is 40,000');
   assert.equal(summary('CKA-certified data engineer.'), SOURCE.summary, 'no Kubernetes certification in the resume');
   assert.equal(summary('AWS Certified data engineer.'), 'AWS Certified data engineer.', 'the resume lists an Amazon certification');
-  assert.equal(summary('Data engineer working with S3, EC2 and k8s.'), 'Data engineer working with S3, EC2 and k8s.', 'a digit in a name is not a figure');
+  assert.equal(summary('Data engineer working with S3, EC2 and AWS.'), 'Data engineer working with S3, EC2 and AWS.', 'a digit in a name is not a figure');
 });
 
 test('bullets that arrive as plain strings are traced by resemblance', () => {
@@ -534,7 +535,8 @@ test('the repair round flags a line that lists tools and one that repeats a requ
 
   const list = 'Containerized and deployed services using Docker, Terraform modules, Kubernetes, EKS, Argo CD, AWS, GitHub Actions, Bash, CI/CD pipelines, cloud infrastructure, and observability tooling.';
   const copy = 'Led incident response processes and drove postmortem outcomes across the data platform.';
-  const tailored = tailoredResumeForm(SOURCE, role([{ text: list, from: 0 }, { text: copy, from: 1 }]), { style: 'ats' });
+  // Kubernetes and EKS, which the resume never shows, stand only as a term the tailoring was let assume (stack.js).
+  const tailored = tailoredResumeForm(SOURCE, role([{ text: list, from: 0 }, { text: copy, from: 1 }]), { style: 'ats', assumedKeywords: ['Kubernetes'] });
   const targets = repairTargets(tailored, SOURCE, { requirements });
   const problemsOf = (text) => targets.find((t) => t.text === text)?.problems || [];
   assert.match(problemsOf(list).join(' '), /list of tools/);
@@ -664,10 +666,12 @@ test('a summary sentence that only lists tools comes out, unless it is the sourc
   assert.equal(summaryWithoutLists(twoSentences, 'x'), twoSentences, 'a cut that would leave one sentence is not made: the repair round is asked to make the list a sentence about work');
   assert.equal(summaryWithoutLists('AWS, Kubernetes, Terraform, EKS, Argo CD, Datadog, Kafka, and Bash.', source), source);
   const listed = `${SOURCE.summary} Worked with AWS, Kubernetes, Terraform, EKS, Argo CD, Datadog, Kafka, and Bash.`;
-  const { form } = tailoredResumeForm(SOURCE, { ...WRITTEN, summary: listed });
+  const { form } = tailoredResumeForm(SOURCE, { ...WRITTEN, summary: listed }, { assumedKeywords: ['Kubernetes'] });
   assert.equal(form.summary, listed, 'two sentences keep the list sentence for the repair round rather than fall to one');
-  const three = tailoredResumeForm(SOURCE, { ...WRITTEN, summary: `${listed} Owns data models end to end.` });
-  assert.equal(three.form.summary, `${SOURCE.summary} Owns data models end to end.`, 'with a third sentence the list goes');
+  const three = tailoredResumeForm(SOURCE, { ...WRITTEN, summary: `${listed} Owns data models end to end.` }, { assumedKeywords: ['Kubernetes'] });
+  assert.equal(three.form.summary, `${listed} Owns data models end to end.`, "a cut that would leave fewer sentences than the mode asks for (three, balanced) keeps the list for the repair round");
+  const four = tailoredResumeForm(SOURCE, { ...WRITTEN, summary: `${listed} Owns data models end to end. Runs the on-call rotation for them.` }, { assumedKeywords: ['Kubernetes'] });
+  assert.equal(four.form.summary, `${SOURCE.summary} Owns data models end to end. Runs the on-call rotation for them.`, 'with the mode\'s three left, the list goes');
 });
 
 test('the same estimated figure is not given twice in a role, by the rewrite or by the gap pass', async () => {
@@ -848,12 +852,12 @@ test('a skills section kept as text is tailored as the skills, under its own hea
     form.skillGroups,
     [
       { category: 'Data', items: ['PostgreSQL', 'Kafka'] },
-      { category: 'Languages', items: ['Python', 'TypeScript'] },
+      { category: 'Languages', items: ['Python', 'TypeScript', 'C#'] },
       { category: 'Other', items: ['Kubernetes', 'dbt'] },
     ],
-    "the resume's category names; a skill the job names comes back; an invented category and a forgotten confirmed keyword go in Other"
+    "the resume's category names; a skill the job names comes back; an invented category and a forgotten confirmed keyword go in Other; C#, which a bullet uses, tops the short list up"
   );
-  assert.deepEqual(form.skills, ['PostgreSQL', 'Kafka', 'Python', 'TypeScript', 'Kubernetes', 'dbt'], 'the flat list is the groups in order');
+  assert.deepEqual(form.skills, ['PostgreSQL', 'Kafka', 'Python', 'TypeScript', 'C#', 'Kubernetes', 'dbt'], 'the flat list is the groups in order');
   assert.deepEqual(
     form.otherSections.map((o) => o.title),
     ['Volunteering'],
@@ -867,10 +871,10 @@ test('the prompt shows grouped skills once, and cut skills are listed by categor
   assert.doesNotMatch(user, /Technical Proficiencies/);
   const tailored = tailoredResumeForm(GROUPED, { ...WRITTEN, skills: [], skillGroups: [{ category: 'Languages', items: ['Python'] }] });
   const { form } = withoutCuts(GROUPED, tailored.form, tailored.changes);
-  assert.deepEqual(form.skillGroups, [{ category: 'Languages', items: ['Python'] }]);
+  // C# comes back to the short list: the Contoso bullet uses it (limitSkills tops up from what the bullets name).
+  assert.deepEqual(form.skillGroups, [{ category: 'Languages', items: ['Python', 'C#'] }]);
   assert.deepEqual(tailored.droppedSkills, [
     { skill: 'TypeScript', category: 'Languages' },
-    { skill: 'C#', category: 'Languages' },
     { skill: 'Postgres', category: 'Data' },
     { skill: 'Kafka', category: 'Data' },
     { skill: 'Photoshop', category: 'Design' },
@@ -922,7 +926,7 @@ test("the job's own skills may take the list to 35, never anything else", () => 
   assert.ok(groups[0].items.every((s) => s.startsWith('JobTool')));
 
   const few = [...jobSkills.slice(0, 20), ...Array.from({ length: 40 }, (_, i) => `Other${i}`)];
-  assert.equal(limitSkills({ skills: few }, [{ category: '', items: few }], { relevant: jobSkills }).groups[0].items.length, 30, '30 when the job names fewer');
+  assert.equal(limitSkills({ skills: few }, [{ category: '', items: few }], { relevant: jobSkills }).groups[0].items.length, 35, '35 when the job names fewer: its 20 and 15 others');
   const labelled = limitSkills({ skills: ['Power Apps:'] }, [{ category: '', items: ['Power Apps:'] }], { named: ['Power Apps'] });
   assert.deepEqual(labelled.groups, [], 'a label is not a skill, even one the job names');
 });
@@ -989,7 +993,7 @@ test("a skill of the resume's own keeps its own category wherever the model put 
     form.skillGroups.map((g) => [g.category, g.items]),
     [
       ['Cloud', ['Terraform', 'AWS', 'Kafka', 'Docker']],
-      ['Languages', ['Python', 'TypeScript']],
+      ['Languages', ['Python', 'TypeScript', 'C#']],
       ['Backend', ['Node.js', 'FastAPI']],
     ],
     "Python stays a language; Kafka is new and goes where the model put it; the model's category order stands"
@@ -1052,7 +1056,9 @@ test('the Raydar case: a category the cut would leave with one skill takes a sec
   assert.ok(groups.every((g) => g.items.length >= 2), `no category of one: ${JSON.stringify(items)}`);
   assert.deepEqual(items['Testing'], ['Monitoring', 'Automated Testing'], "the resume's own from that category when the model left none");
   assert.deepEqual(items['Cloud & DevOps'].slice(0, 2), ['AWS', 'GCP'], "the model's next when it has one");
-  assert.equal(groups.flatMap((g) => g.items).filter((s) => !jobSkills.includes(s) && s !== 'Monitoring').length, 15, 'the seconds count toward the 15 the job does not name');
+  const outsideAsked = groups.filter((g) => g.category !== 'Backend & APIs').flatMap((g) => g.items);
+  assert.ok(outsideAsked.filter((s) => !jobSkills.includes(s) && s !== 'Monitoring').length <= 15, 'the seconds count toward the 15 the job does not name');
+  assert.deepEqual(items['Backend & APIs'], ['FastAPI', 'Node.js', 'Django', '.NET', 'REST APIs'], 'a category the job asks for by name (REST APIs) keeps its own stack, outside the 15');
 
   // A category the job does not ask for, cut to one skill by the budget, goes rather than stand alone.
   const lone = {
@@ -1108,7 +1114,7 @@ test("the summary's tenure sentence stays the source's when the draft writes a j
   assert.equal(summaryWithSourceTenure(reworded, source, ['Terraform', 'Infrastructure']), reworded, 'a reworded tenure sentence that claims no job term stands');
   assert.equal(summaryWithSourceTenure('No years here.', source, ['Infrastructure']), 'No years here.');
 
-  const { form } = tailoredResumeForm({ ...SOURCE, summary: source }, { ...WRITTEN, summary: draft }, { protectedKeywords: ['Terraform'], assumedKeywords: ['Terraform'], job: { title: 'Senior DevOps Engineer, Infrastructure & Reliability' } });
+  const { form } = tailoredResumeForm({ ...SOURCE, summary: source }, { ...WRITTEN, summary: draft }, { protectedKeywords: ['Terraform'], assumedKeywords: ['Terraform', 'Kubernetes'], job: { title: 'Senior DevOps Engineer, Infrastructure & Reliability' } });
   assert.ok(form.summary.startsWith('Senior Full Stack Engineer with 10+ years delivering scalable web, backend, mobile, and AI-driven products. Hands-on'), form.summary);
 });
 

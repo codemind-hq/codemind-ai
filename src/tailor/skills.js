@@ -1,14 +1,14 @@
 import { hasKeyword } from '../text/keywords.js';
 import { canonicalSkill } from '../text/dict/skills.js';
 import { addToSkillGroups, mergeSkillGroups, OTHER_CATEGORY } from '../resume/structuredResume.js';
-import { lower, squash } from './text.js';
+import { lower, squash, words } from './text.js';
 
 // ── Skills: relevance and count ────────────────────────────────────────────
 //
 // A skills section longer than the experience reads as keyword stuffing, and the model, told to
 // drop what the job does not need, kept all 82 of one resume's skills and added seven. So the
 // cut is code's: what the job names first, in the job's own order, then the model's order, at
-// most MAX_SKILLS in all (MAX_JOB_SKILLS when the job's own would otherwise be cut, never for
+// most MAX_SKILLS (35) in all (MAX_JOB_SKILLS when the job's own would otherwise be cut, never for
 // anything else), at most MAX_OTHER_SKILLS the job does not ask for and MAX_GROUP_OTHERS of them
 // in a category — the categories that name something the job asks for take theirs first, so a
 // DevOps job's Cloud category keeps Docker and Linux before a database category keeps Firebase.
@@ -27,12 +27,29 @@ import { lower, squash } from './text.js';
 // by the skill a phrase names ("Terraform modules" beside "Terraform"). Every skill of the
 // resume's own that is cut is reported, for the user to put back.
 
-const MAX_SKILLS = 30;
+const MAX_SKILLS = 35;
+// A tailored list this short, when the resume has more the bullets use, says less than the
+// candidate did (topped up below).
+const MIN_SKILLS = 25;
 const MAX_JOB_SKILLS = 35;
 const MAX_OTHER_SKILLS = 15;
 const MAX_GROUP_OTHERS = 4;
 const MIN_GROUP = 2;
 const LEADING_GROUPS = 3;
+// A category whose name is what the job asks for ("Backend and API", for a job that asks for APIs
+// and backend fundamentals) is the candidate's own stack for it: it keeps up to this many of its
+// skills whether or not the job names each one, outside the budget for skills the job does not
+// ask for. A Staff AI Engineer tailoring cut "Backend and API" to nothing — Python, FastAPI,
+// asyncio, Pydantic gone — because the posting named APIs but not the language.
+const MAX_NAMED_GROUP = 8;
+// Words a category name carries without saying what it is about.
+const CATEGORY_FILLER = new Set(['and', 'skill', 'tool', 'other', 'technical', 'core', 'key', 'dev']);
+
+/** True when the category's name says what one of `terms` says: a word of it, stems compared. */
+export function categoryAsked(category, terms) {
+  const own = words(category).filter((w) => w.length >= 2 && !CATEGORY_FILLER.has(w));
+  return own.length > 0 && terms.some((k) => typeof k === 'string' && own.some((w) => words(k).includes(w)));
+}
 // "Terraform modules", "Kafka clusters", "CI/CD pipelines": the skill's name with a generic noun.
 const GENERIC_SKILL_WORDS_RE = /\b(?:modules?|pipelines?|clusters?|environments?|deployments?|workflows?|tooling|tools|stack)\b/gi;
 // Matched inside a word too: resumes read from a PDF run words together ("Fastauto-didacticLearner").
@@ -109,7 +126,7 @@ export function tailoredSkillGroups(sourceGroups, draftGroups, { blocked, protec
 export function limitSkills(
   source,
   groups,
-  { relevant = [], named = [], assumed = [], confirmed = [], max = MAX_SKILLS, jobMax = MAX_JOB_SKILLS, otherMax = MAX_OTHER_SKILLS, perGroup = MAX_GROUP_OTHERS } = {}
+  { relevant = [], named = [], assumed = [], confirmed = [], shown = '', min = MIN_SKILLS, max = MAX_SKILLS, jobMax = MAX_JOB_SKILLS, otherMax = MAX_OTHER_SKILLS, perGroup = MAX_GROUP_OTHERS } = {}
 ) {
   const sourceKeys = new Set((source.skills || []).map(skillKey));
   const term = (k) => typeof k === 'string' && k.trim();
@@ -181,6 +198,22 @@ export function limitSkills(
       others += 1;
       filled[i] += 1;
     });
+    // A category the job asks for by name fills with its own skills up to MAX_NAMED_GROUP: the
+    // model's for it first, then the resume's own from it that the model left out.
+    groups.forEach((g, i) => {
+      if (!categoryAsked(g.category, [...relevant, ...named])) return;
+      const taken = keptKeys();
+      const pool = (source.skillGroups || []).find((s) => lower(s.category) === lower(g.category))?.items || [];
+      const fresh = (skill) => skill && !kept[i].includes(skill) && !taken.has(skillKey(skill)) && !taken.has(canonicalSkill(skill));
+      for (const skill of [...candidates[i], ...pool.filter(isSkill).map(cleanSkill)]) {
+        if (kept[i].length >= MAX_NAMED_GROUP || count >= max) break;
+        if (!fresh(skill)) continue;
+        if (!candidates[i].includes(skill)) candidates[i].push(skill);
+        taken.add(skillKey(skill));
+        keep(i, skill);
+        filled[i] += 1;
+      }
+    });
   }
   // Then the model's order: the categories that speak to the job first, then the ones it put
   // first; up to max in all, no more than otherMax the job does not ask for, and no more than
@@ -204,9 +237,69 @@ export function limitSkills(
   // (one the model itself returned with one skill is the model's choice).
   if (!flat) kept.forEach((items, i) => starved[i] && items.length < MIN_GROUP && !items.some(isRelevant) && kept[i].splice(0));
 
-  const out = groups
-    .map((g, i) => ({ category: g.category, items: candidates[i].filter((s) => kept[i].includes(s)) }))
-    .filter((g) => g.items.length);
+  // The resume's own skills that the tailored bullets use (`shown`) — the work on the page is what
+  // makes a skill relevant — come back: a category the cut left out entirely, when two or more of
+  // its skills are used and there is room under max (up to perGroup, the job's first); then, while
+  // fewer than `min` are listed, one more for each kept category in turn. A tailoring of a
+  // 49-skill resume kept 24 in four categories and lost Infrastructure and MLOps, though Docker,
+  // GitHub Actions and MLflow were all in its bullets.
+  const extra = [];
+  const used = (skill) => kept.some((items) => items.includes(skill)) || extra.some((g) => g.items.includes(skill));
+  const countNow = () => kept.reduce((n, items) => n + items.length, 0) + extra.reduce((n, g) => n + g.items.length, 0);
+  if (shown && countNow() < max) {
+    const taken = new Set([...keptKeys()]);
+    // Used as written, case and all: "Typed ReAct loop" (the agent pattern) is not React.
+    const usedAsWritten = (skill) => hasKeyword(shown, skill) && shown.includes(skill);
+    const eligible = (skill) => skill && isSkill(skill) && own(skill) && usedAsWritten(skill) && !taken.has(skillKey(skill)) && !taken.has(canonicalSkill(skill));
+    const take = (skill) => {
+      taken.add(skillKey(skill));
+      if (canonicalSkill(skill)) taken.add(canonicalSkill(skill));
+    };
+    const relevantFirst = (items) => [...items.filter(isRelevant), ...items.filter((s) => !isRelevant(s))];
+    if (flat) {
+      for (const skill of countNow() < min ? relevantFirst((source.skills || []).map(cleanSkill)) : []) {
+        if (countNow() >= min || countNow() >= max) break;
+        if (!eligible(skill) || used(skill)) continue;
+        take(skill);
+        candidates[0].push(skill);
+        kept[0].push(skill);
+      }
+    } else {
+      const at = (category) => groups.findIndex((g) => lower(g.category) === lower(category));
+      const missing = (source.skillGroups || []).filter((g) => at(g.category) < 0 || !kept[at(g.category)].length);
+      for (const g of missing) {
+        const items = [];
+        for (const skill of relevantFirst(g.items.map(cleanSkill))) {
+          if (items.length >= perGroup || countNow() + items.length >= max) break;
+          if (eligible(skill)) {
+            take(skill);
+            items.push(skill);
+          }
+        }
+        if (items.length >= MIN_GROUP) extra.push({ category: g.category, items });
+        else items.forEach((skill) => taken.delete(skillKey(skill)));
+      }
+      for (let round = 0; countNow() < min && round < perGroup; round += 1) {
+        let added = false;
+        for (const g of source.skillGroups || []) {
+          const i = at(g.category);
+          if (i < 0 || !kept[i].length || countNow() >= min) continue;
+          const skill = relevantFirst(g.items.map(cleanSkill)).find((s) => eligible(s) && !used(s));
+          if (!skill) continue;
+          take(skill);
+          candidates[i].push(skill);
+          kept[i].push(skill);
+          added = true;
+        }
+        if (!added) break;
+      }
+    }
+  }
+
+  const out = [
+    ...groups.map((g, i) => ({ category: g.category, items: candidates[i].filter((s) => kept[i].includes(s)) })),
+    ...extra,
+  ].filter((g) => g.items.length);
   // Kept under this spelling or another: "Golang" is not lost while "Go" stays.
   const final = new Set(out.flatMap((g) => g.items).flatMap((skill) => [skillKey(skill), canonicalSkill(skill)]).filter(Boolean));
   const isKept = (skill) => final.has(skillKey(skill)) || final.has(canonicalSkill(skill));

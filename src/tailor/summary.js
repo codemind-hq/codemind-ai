@@ -2,6 +2,7 @@ import { hasKeyword } from '../text/keywords.js';
 import { listLike } from '../ats/index.js';
 import { TENURE_RE } from './claims.js';
 import { figuresOf, lostDetails, namesOf } from './detail.js';
+import { newStackTerms } from './stack.js';
 import { lower, sameTerm, sentencesOf, shows } from './text.js';
 
 // ── Summary: the tenure sentence ───────────────────────────────────────────
@@ -30,12 +31,16 @@ export function titleTerms(title) {
  * summary says less than a list does, and the repair round (repair.js) is asked to make the
  * list a sentence about work rather than lose it.
  */
-export function summaryWithoutLists(draft, source) {
+export function summaryWithoutLists(draft, source, { minSentences = MIN_SUMMARY_SENTENCES } = {}) {
   const own = new Set(sentencesOf(source).map((s) => lower(s)));
   const parts = sentencesOf(draft);
   const kept = parts.filter((s) => own.has(lower(s)) || !listLike(s));
   if (!kept.length) return source;
-  return (kept.length < MIN_SUMMARY_SENTENCES && parts.length >= MIN_SUMMARY_SENTENCES ? parts : kept).join('').replace(/\s+/g, ' ').trim();
+  // `minSentences` is the mode's (style.js summarySentences): a Staff AI Engineer tailoring lost
+  // "Builds LLM-based agents with asynchronous workflows, tool orchestration, human oversight…",
+  // the one sentence saying what the candidate builds in the job's terms, and kept three.
+  const floor = Math.max(MIN_SUMMARY_SENTENCES, minSentences);
+  return (kept.length < floor && parts.length >= MIN_SUMMARY_SENTENCES ? parts : kept).join('').replace(/\s+/g, ' ').trim();
 }
 
 /** Fewer sentences than this, or fewer words than MIN_SUMMARY_WORDS, and a summary is short (repair.js). */
@@ -74,6 +79,30 @@ const CREDENTIAL_RE =
 const MAX_CREDENTIAL_CHARS = 160;
 // Half or more of the sentence's details gone from the draft and it is not said there.
 const CREDENTIAL_LOST = 0.5;
+
+/** At most this many figures in a summary, years and credentials aside: more reads as a list of metrics (repair.js). */
+export const MAX_SUMMARY_FIGURES = 2;
+const YEARS_FIGURE_RE = /\d+\+?\s*(?:years?|yrs?)\b/gi;
+
+/**
+ * The figures a summary states, not counting its tenure ("9+ years") or a credential sentence
+ * ("10x Microsoft MVP in AI").
+ */
+export function summaryFigures(text) {
+  return sentencesOf(text)
+    .filter((s) => !CREDENTIAL_RE.test(s))
+    .flatMap((s) => figuresOf(s.replace(YEARS_FIGURE_RE, ' ')));
+}
+
+/**
+ * The draft summary without a sentence that names a language, cloud or container platform the
+ * resume (`sourceText`) never shows and the member did not confirm (stack.js). A draft left with
+ * nothing gives way to the source.
+ */
+export function summaryWithoutNewStack(draft, source, { sourceText = '', confirmed = [] } = {}) {
+  const kept = sentencesOf(draft).filter((s) => !newStackTerms(s, { sourceText, confirmed }).length);
+  return kept.length ? kept.join('').replace(/\s+/g, ' ').trim() : source;
+}
 
 /**
  * The draft summary with every short credential sentence of the source's that it dropped put

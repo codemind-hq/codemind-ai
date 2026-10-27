@@ -1,5 +1,5 @@
 import { hasKeyword } from '../text/keywords.js';
-import { contentWords } from './text.js';
+import { contentWords, sameWording } from './text.js';
 
 // ── A bullet's details ─────────────────────────────────────────────────────
 //
@@ -94,4 +94,57 @@ export function borrowedBullet(text, { ownText = '', elsewhere = [], jobText = '
     const theirs = contentWords(other);
     return fresh.filter((w) => theirs.has(w)).length >= BORROWED_WORDS;
   }) || null;
+}
+
+// Two bullets that share this much of the longer one's words say the same work twice — when both
+// say enough to tell (MIN_REPEAT_WORDS), and it is not that each names something the other lacks:
+// "Built the billing API on AWS" and "Built the reports API on AWS" are two pieces of work.
+const REPEATED_BULLET = 0.7;
+const MIN_REPEAT_WORDS = 5;
+// The words a line has that the other lacks, its opening verb aside ("Built" and "Established"
+// start the same work): when both lines have some, each says something the other does not.
+const ownWords = (a, b) => {
+  const theirs = contentWords(b);
+  return [...contentWords(String(a).trim().replace(/^\S+\s*/, ''))].filter((w) => !theirs.has(w));
+};
+const repeats = (a, b) =>
+  Math.min(contentWords(a).size, contentWords(b).size) >= MIN_REPEAT_WORDS &&
+  sameWording(a, b) >= REPEATED_BULLET &&
+  !(lostDetails(a, b).length && lostDetails(b, a).length) &&
+  !(ownWords(a, b).length && ownWords(b, a).length);
+
+/**
+ * The tailoring with every bullet that repeats another taken out, anywhere in the resume: of
+ * two lines that share REPEATED_BULLET of their words, the one naming more of the job's terms
+ * (`protectedKeywords`) stays, the newer role's on a tie (experience is newest first). A role
+ * never loses its last bullet. What goes is recorded as a removal the member can put back: a
+ * rewrite or an added line loses its change record, and its source bullet, if it had one, is
+ * listed as removed. Returns { form, changes, estimates, removed } with `removed` the count.
+ */
+export function withoutRepeatedBullets(tailored, protectedKeywords = []) {
+  const experience = (tailored.form.experience || []).map((e) => ({ ...e, achievements: [...(e.achievements || [])] }));
+  let changes = (tailored.changes || []).map((c) => ({ ...c }));
+  let estimates = (tailored.estimates || []).map((e) => ({ ...e }));
+  const weight = (text) => protectedKeywords.filter((k) => typeof k === 'string' && k.trim() && hasKeyword(text, k)).length;
+  const lines = experience.flatMap((e, role) => e.achievements.map((text) => ({ role, text })));
+  let removed = 0;
+  const gone = new Set();
+  for (let a = 0; a < lines.length; a += 1) {
+    for (let b = a + 1; b < lines.length; b += 1) {
+      if (gone.has(a) || gone.has(b) || !repeats(lines[a].text, lines[b].text)) continue;
+      const drop = weight(lines[b].text) > weight(lines[a].text) ? a : b;
+      const { role, text } = lines[drop];
+      const bullets = experience[role].achievements;
+      if (bullets.length <= 1) continue;
+      bullets.splice(bullets.indexOf(text), 1);
+      gone.add(drop);
+      removed += 1;
+      const change = changes.find((c) => c.role === role && c.kind !== 'removed' && c.after === text);
+      changes = changes.filter((c) => c !== change);
+      const source = change ? change.before : text;
+      if (source) changes.push({ role, kind: 'removed', before: source, after: '' });
+      estimates = estimates.filter((e) => !(e.role === role && e.text === text));
+    }
+  }
+  return { form: { ...tailored.form, experience }, changes, estimates, removed };
 }

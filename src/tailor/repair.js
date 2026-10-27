@@ -1,5 +1,5 @@
 import { hasKeyword } from '../text/keywords.js';
-import { cleanListItem } from '../resume/structuredResume.js';
+import { cleanListItem, structuredResumeToText } from '../resume/structuredResume.js';
 import { listLike } from '../ats/index.js';
 import { MAX_BULLET_CHARS } from '../checks/index.js';
 import { aiTellWords, RESUME_VOICE_RULES } from '../text/voice.js';
@@ -7,7 +7,7 @@ import { inventsFact } from './claims.js';
 import { copiedRequirement, echoesRequirement } from './copied.js';
 import { lostDetails } from './detail.js';
 import { tailorMode } from './style.js';
-import { listSentences, MIN_SUMMARY_WORDS, summaryWords } from './summary.js';
+import { listSentences, MAX_SUMMARY_FIGURES, MIN_SUMMARY_WORDS, summaryFigures, summaryWords } from './summary.js';
 import { lower, sentencesOf } from './text.js';
 
 // ── Repair round ───────────────────────────────────────────────────────────
@@ -27,9 +27,10 @@ const REPAIR_MAX_LINES = 8;
  * A bullet (the default) is also held to its length and to not being a list of tools; the
  * summary (`summary: true`) has its own length and list rules (summaryProblems).
  */
-function lineProblems(text, { requirements = [], description = '', summary = false, roleText = null, before = '' } = {}) {
+function lineProblems(text, { requirements = [], description = '', summary = false, roleText = null, before = '', ownText = '' } = {}) {
   const problems = [];
-  const words = aiTellWords(text);
+  // A word the resume itself uses (`ownText`) is the candidate's, not an AI tell.
+  const words = aiTellWords(text, ownText);
   if (words.length) problems.push(`it uses ${words.map((w) => `"${w}"`).join(', ')}, which reads as AI-written; say the plain thing`);
   // A bullet as long as the one it rewrites is not too long: cutting it to length would cut its details.
   if (!summary && text.length > Math.max(MAX_BULLET_CHARS, before.length)) problems.push(`it is ${text.length} characters; keep it under ${MAX_BULLET_CHARS}`);
@@ -54,10 +55,16 @@ function lineProblems(text, { requirements = [], description = '', summary = fal
  * MIN_SUMMARY_WORDS words. A summary that says less than the source's did is the most common
  * form of that: "the summary too short" was what a 74-point tailoring looked like.
  */
-function summaryProblems(text, { requirements = [], description = '', sentences = [3, 4] } = {}) {
-  const problems = lineProblems(text, { requirements, description, summary: true });
+function summaryProblems(text, { requirements = [], description = '', sentences = [3, 4], ownText = '' } = {}) {
+  const problems = lineProblems(text, { requirements, description, summary: true, ownText });
   const lists = listSentences(text);
   if (lists.length) problems.push(`"${lists[0].trim().slice(0, 80)}" reads as a list of tools; keep the technologies, inside a sentence about the work done with them`);
+  const figures = summaryFigures(text);
+  if (figures.length > MAX_SUMMARY_FIGURES) {
+    problems.push(
+      `it strings ${figures.length} figures together (${figures.slice(0, 5).join(', ')}), which reads as a list of metrics; keep at most ${MAX_SUMMARY_FIGURES}, the ones that matter most to this job, and say instead what the candidate builds in this job's terms and how they lead`
+    );
+  }
   const [min, max] = sentences;
   const count = sentencesOf(text).length;
   if (count < min || summaryWords(text) < MIN_SUMMARY_WORDS) {
@@ -77,9 +84,10 @@ function summaryProblems(text, { requirements = [], description = '', sentences 
 export function repairTargets(tailored, sourceForm, { requirements = [], description = '', style } = {}) {
   const targets = [];
   const summary = tailored.form.summary || '';
+  const ownText = sourceForm ? structuredResumeToText(sourceForm) : '';
   if (summary && lower(summary) !== lower(sourceForm?.summary)) {
-    const problems = summaryProblems(summary, { requirements, description, sentences: tailorMode(style).summarySentences });
-    if (problems.length) targets.push({ role: null, text: summary, problems });
+    const problems = summaryProblems(summary, { requirements, description, sentences: tailorMode(style).summarySentences, ownText });
+    if (problems.length) targets.push({ role: null, text: summary, problems, ownText });
   }
   // A line with an estimate is the candidate's to edit; a repair would lose track of its clause.
   const estimated = new Set((tailored.estimates || []).map((e) => e.text));
@@ -89,8 +97,8 @@ export function repairTargets(tailored, sourceForm, { requirements = [], descrip
     if (change.kind === 'removed' || !change.after || estimated.has(change.after)) continue;
     const roleText = roleTextOf(change.role);
     const before = change.before || '';
-    const problems = lineProblems(change.after, { requirements, description, roleText, before });
-    if (problems.length) targets.push({ role: change.role, text: change.after, problems, roleText, before });
+    const problems = lineProblems(change.after, { requirements, description, roleText, before, ownText });
+    if (problems.length) targets.push({ role: change.role, text: change.after, problems, roleText, before, ownText });
   }
   return targets.slice(0, REPAIR_MAX_LINES).map((t, id) => ({ id, ...t }));
 }
@@ -134,10 +142,13 @@ export function applyRepairs(tailored, targets, answer, { protectedKeywords = []
   for (const target of targets) {
     const text = byId.get(target.id);
     if (!text || text === target.text) continue;
-    const problems = target.role === null ? summaryProblems(text, { requirements, description, sentences }) : lineProblems(text, { requirements, description, roleText: target.roleText ?? null, before: target.before || '' });
+    const ownText = target.ownText || '';
+    const problems = target.role === null ? summaryProblems(text, { requirements, description, sentences, ownText }) : lineProblems(text, { requirements, description, roleText: target.roleText ?? null, before: target.before || '', ownText });
     const better = problems.length < target.problems.length;
     const keepsTerms = !protectedKeywords.some((k) => hasKeyword(target.text, k) && !hasKeyword(text, k));
-    if (!better || !keepsTerms || lostDetails(target.text, text).length || (tailored.sources && inventsFact(text, tailored.sources))) continue;
+    // A bullet keeps its figures and names (detail.js); a summary may let figures go, since the bullets carry them.
+    const losesDetails = target.role !== null && lostDetails(target.text, text).length > 0;
+    if (!better || !keepsTerms || losesDetails || (tailored.sources && inventsFact(text, tailored.sources))) continue;
     if (target.role === null) {
       form.summary = text;
     } else {

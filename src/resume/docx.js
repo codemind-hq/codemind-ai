@@ -4,7 +4,6 @@ import {
   Document,
   Packer,
   Paragraph,
-  TabStopPosition,
   TabStopType,
   TextRun,
   convertInchesToTwip,
@@ -211,17 +210,33 @@ const GLYPH_WIDTH = { Georgia: 0.5, Calibri: 0.45, Arial: 0.48 };
 const LINE_HEIGHT = 1.17;
 const TWIPS = 20;
 
+// A bold title runs wider than body text of the same size.
+const BOLD_WIDTH = 1.12;
+const textWidth = (text, size, glyph, bold = false) => String(text || '').length * size * glyph * 1.04 * (bold ? BOLD_WIDTH : 1);
+// The page the docx library sets by default: A4, 11906 by 16838 twips (8.27 by 11.69 inches).
+const PAGE_INCHES = { width: 11906 / 1440, height: 16838 / 1440 };
+const pageWidth = (t) => (PAGE_INCHES.width - 2 * t.margins) * 72;
+// Room kept between an entry's title and its dates, in points.
+const DATES_GAP = 18;
+
 /**
- * Roughly how many pages a document model fills in a template, to one decimal. An estimate
- * from character counts, not a layout: good for "this runs onto a second page", not for
- * where the break falls.
+ * True when an entry's dates fit on its title line, right-aligned after the title and its
+ * organisation. "Founder and Lead AI Engineer, Music Intelligence Platform · HarmoniqHub" left no
+ * room for "Dec 2024 - Present": the right tab had nowhere to go and Word set the dates against
+ * the name ("HarmoniqHubDec 2024 - Present"). Such dates go on a line of their own.
  */
-export function estimatePages(model, templateId) {
-  const t = resumeTemplate(templateId);
-  const width = (8.5 - 2 * t.margins) * 72;
-  const pageHeight = (11 - 2 * t.margins) * 72;
+function datesFit({ title, org, dates }, t) {
   const glyph = GLYPH_WIDTH[t.fonts.body] || 0.5;
-  const lines = (text, size, indent = 0) => Math.max(1, Math.ceil((String(text || '').length * size * glyph * 1.04) / (width - indent)));
+  const line = textWidth(title, t.sizes.body, glyph, true) + (org ? textWidth(`  ·  ${org}`, t.sizes.body, glyph) : 0);
+  return line + textWidth(dates, t.sizes.small, glyph) + DATES_GAP <= pageWidth(t);
+}
+
+/** How many pages a document model fills in a template (the template itself, not its id), unrounded. */
+function pagesIn(model, t) {
+  const width = pageWidth(t);
+  const pageHeight = (PAGE_INCHES.height - 2 * t.margins) * 72;
+  const glyph = GLYPH_WIDTH[t.fonts.body] || 0.5;
+  const lines = (text, size, indent = 0) => Math.max(1, Math.ceil(textWidth(text, size, glyph) / (width - indent)));
   const block = (text, size, after, indent) => lines(text, size, indent) * size * LINE_HEIGHT + after / TWIPS;
 
   let height = 0;
@@ -231,13 +246,65 @@ export function estimatePages(model, templateId) {
   for (const section of model.sections || []) {
     height += t.sizes.heading * LINE_HEIGHT + (t.spacing.sectionBefore + t.spacing.sectionAfter) / TWIPS;
     for (const b of section.blocks || []) {
-      if (b.type === 'entry') height += t.sizes.body * LINE_HEIGHT + (t.spacing.entryBefore + t.spacing.bullet) / TWIPS;
-      else if (b.type === 'bullets') for (const item of b.items) height += block(item, t.sizes.body, t.spacing.bullet, 18);
+      if (b.type === 'entry') {
+        const titleLines = Math.max(1, Math.ceil((textWidth(b.title, t.sizes.body, glyph, true) + (b.org ? textWidth(`  ·  ${b.org}`, t.sizes.body, glyph) : 0)) / width));
+        const dateLine = b.dates && !datesFit(b, t) ? t.sizes.small * LINE_HEIGHT : 0;
+        height += titleLines * t.sizes.body * LINE_HEIGHT + dateLine + (t.spacing.entryBefore + t.spacing.bullet) / TWIPS;
+      } else if (b.type === 'bullets') for (const item of b.items) height += block(item, t.sizes.body, t.spacing.bullet, 18);
       else height += block(b.text, t.sizes.body, t.spacing.paragraph);
     }
   }
-  return Math.max(0.1, Math.round((height / pageHeight) * 10) / 10);
+  return (height / pageHeight) * MEASURED;
 }
+// What Word made of the same documents: six renders of two resumes in the three templates
+// (2026-10-27, A4) filled 0.91 to 0.97 of what the character counts say.
+const MEASURED = 0.93;
+
+// A last page this little filled is a few lines spilled over: the document is set a little
+// tighter, a step at a time, until it ends a page sooner. A page and a half stays as it is —
+// squeezing that much reads as cramped.
+const SPARSE_LAST_PAGE = 0.4;
+// The estimate missed Word by up to 0.13 of a page once spacing was tightened (a resume estimated
+// at 1.9 pages ran to 2.03): a fitted layout must come in this far under the page.
+const FIT_MARGIN = 0.15;
+const scaleSpacing = (spacing, by) => Object.fromEntries(Object.entries(spacing).map(([k, v]) => [k, Math.round(v * by)]));
+const smaller = (sizes, by, keys) => ({ ...sizes, ...Object.fromEntries(keys.map((k) => [k, sizes[k] - by])) });
+const FIT_STEPS = [
+  (t) => ({ ...t, spacing: scaleSpacing(t.spacing, 0.7) }),
+  (t) => ({ ...t, sizes: smaller(t.sizes, 0.5, ['body', 'small', 'heading']) }),
+  (t) => ({ ...t, margins: Math.max(0.5, t.margins - 0.15) }),
+  (t) => ({ ...t, sizes: smaller(t.sizes, 0.5, ['body']) }),
+];
+
+/**
+ * The template a document model is rendered in: `templateId`'s own, or, when that leaves a last
+ * page nearly empty (two pages and three lines), the same layout set tighter so it ends a page
+ * sooner. The look stays the template's: only spacing, then type size, then margins give.
+ */
+export function fittedTemplate(model, templateId) {
+  const t = resumeTemplate(templateId);
+  const pages = pagesIn(model, t);
+  const whole = Math.floor(pages);
+  if (whole < 1 || pages - whole === 0 || pages - whole > SPARSE_LAST_PAGE) return t;
+  let fitted = t;
+  for (const step of FIT_STEPS) {
+    fitted = step(fitted);
+    if (pagesIn(model, fitted) <= whole - FIT_MARGIN) return fitted;
+  }
+  return t;
+}
+
+/**
+ * Roughly how many pages a document model fills in a template as it is rendered (fittedTemplate),
+ * to one decimal. An estimate from character counts, not a layout: good for "this runs onto a
+ * second page", not for where the break falls.
+ */
+export function estimatePages(model, templateId) {
+  return Math.max(0.1, Math.round(renderedPages(model, templateId) * 10) / 10);
+}
+
+/** estimatePages unrounded: the pages a model fills as rendered, for code that budgets them (tailor/pages.js). */
+export const renderedPages = (model, templateId) => pagesIn(model, fittedTemplate(model, templateId));
 
 // ── model → docx ──────────────────────────────────────────────────────────────
 
@@ -262,14 +329,20 @@ function headingParagraph(text, t) {
   });
 }
 
-function entryParagraph({ title, org, dates }, t) {
+function entryParagraph(entry, t) {
+  const { title, org, dates } = entry;
   const children = [new TextRun({ text: title, bold: true })];
   if (org) children.push(new TextRun({ text: `  ·  ${org}` }));
-  if (dates) children.push(new TextRun({ text: `\t${dates}`, color: t.colors.muted, size: pt(t.sizes.small) }));
+  // Right-aligned at the margin when they fit beside the title, else on the next line (datesFit).
+  if (dates) {
+    const style = { color: t.colors.muted, size: pt(t.sizes.small) };
+    children.push(datesFit(entry, t) ? new TextRun({ text: `\t${dates}`, ...style }) : new TextRun({ text: dates, break: 1, ...style }));
+  }
   return new Paragraph({
     keepNext: true,
     spacing: { before: t.spacing.entryBefore, after: t.spacing.bullet },
-    tabStops: [{ type: TabStopType.RIGHT, position: TabStopPosition.MAX }],
+    // At the text's right edge for the template's margins (TabStopPosition.MAX is the edge for 1-inch margins only).
+    tabStops: [{ type: TabStopType.RIGHT, position: Math.round(pageWidth(t) * TWIPS) }],
     children,
   });
 }
@@ -286,9 +359,9 @@ function paragraphRuns(block) {
   return [new TextRun({ text: `${block.label}: `, bold: true }), new TextRun(block.text.slice(block.label.length + 2))];
 }
 
-/** The document for a parsed résumé in one template. Pure: nothing is written anywhere. */
+/** The document for a parsed résumé in one template, fitted to its pages (fittedTemplate). Pure: nothing is written anywhere. */
 export function buildResumeDocx(model, templateId) {
-  const t = resumeTemplate(templateId);
+  const t = fittedTemplate(model, templateId);
   const children = [];
 
   if (model.name) {

@@ -2,11 +2,12 @@ import { hasKeyword } from '../text/keywords.js';
 import { cleanStructuredResume, structuredResumeToText } from '../resume/structuredResume.js';
 import { factSources } from '../checks/index.js';
 import { traceBullets, writtenBullets } from './bullets.js';
+import { withoutRepeatedBullets } from './detail.js';
 import { inventsFact } from './claims.js';
 import { resumeHeadline } from './headline.js';
 import { allowedSkills, backedSkillGroups, limitSkills, namesSkill, tailoredSkillGroups } from './skills.js';
 import { tailorMode } from './style.js';
-import { summaryWithoutClaims, summaryWithoutLists, summaryWithSourceCredentials, summaryWithSourceTenure, titleTerms } from './summary.js';
+import { summaryWithoutClaims, summaryWithoutLists, summaryWithoutNewStack, summaryWithSourceCredentials, summaryWithSourceTenure, titleTerms } from './summary.js';
 import { contentWords, lower, unique } from './text.js';
 
 // ── The tailored form ──────────────────────────────────────────────────────
@@ -113,19 +114,20 @@ export function tailoredResumeForm(
   const draft = cleanStructuredResume(written);
   const confirmed = confirmedKeywords || [];
   const sources = tailoringSources(source, confirmed, evidence);
+  const sourceText = structuredResumeToText(source);
 
   // The form's cleaning flattens bullets to strings, so the traced ones are read from the answer itself.
   const writtenRoles = (Array.isArray(written?.experience) ? written.experience : [])
     .filter((e) => e && typeof e === 'object')
     .map((e) => ({ company: lower(e.company), title: lower(e.title), period: lower(e.period), bullets: writtenBullets(e.achievements) }));
   const roles = pairEntries(source.experience, writtenRoles, EXPERIENCE_RULES);
-  const changes = [];
-  const estimated = [];
+  let changes = [];
+  let estimated = [];
   // `list` is the role's estimates, `taken` every earlier role's: a figure is stated once in the resume.
   const budget = { left: mode.maxEstimates, list: [], taken: estimated };
   // What the job asks for by name: the words a line may share with another role's bullet.
   const jobText = [...protectedKeywords, ...(assumedKeywords || []), ...confirmed, ...(job?.skills || []), ...(job?.preferredSkills || [])].join('\n');
-  const experience = source.experience.map((entry, role) => {
+  const tracedRoles = source.experience.map((entry, role) => {
     if (!roles[role]) return entry;
     budget.list = [];
     const traced = traceBullets(entry.achievements, roles[role].bullets, {
@@ -139,11 +141,17 @@ export function tailoredResumeForm(
       estimates: budget,
       elsewhere: source.experience.filter((_, i) => i !== role).flatMap((e) => e.achievements),
       jobText,
+      sourceText,
     });
     changes.push(...traced.changes.map((c) => ({ role, ...c })));
     estimated.push(...budget.list.filter((e) => traced.bullets.includes(e.text)).map((e) => ({ role, ...e })));
     return { ...entry, achievements: traced.bullets };
   });
+  // The same work said twice, in one role or across two, is said once (detail.js).
+  const deduped = withoutRepeatedBullets({ form: { experience: tracedRoles }, changes, estimates: estimated }, protectedKeywords);
+  const experience = deduped.form.experience;
+  changes = deduped.changes;
+  estimated = deduped.estimates;
 
   // Projects may be dropped or reordered, so the model's order stands; their facts do not change.
   const projectPairs = pairEntries(source.projects, draft.projects, PROJECT_RULES);
@@ -177,14 +185,19 @@ export function tailoredResumeForm(
     named: [...(job?.skills || []), ...(job?.preferredSkills || []), ...confirmed],
     assumed: assumedKeywords || [],
     confirmed,
+    // The work on the page, for a list the cut left short (limitSkills tops it up from what this names).
+    shown: [...experience.flatMap((e) => e.achievements || []), ...projects.flatMap((p) => p.highlights || [])].join('\n'),
   });
-  const sourceText = structuredResumeToText(source);
   const jobTerms = [...protectedKeywords, ...(job?.skills || []), ...(job?.preferredSkills || [])];
   const summary =
     draft.summary && !inventsFact(draft.summary, sources)
       ? summaryWithSourceCredentials(
           summaryWithSourceTenure(
-            summaryWithoutClaims(summaryWithoutLists(draft.summary, source.summary), source.summary, { terms: jobTerms, allowed: added, sourceText }),
+            summaryWithoutNewStack(
+              summaryWithoutClaims(summaryWithoutLists(draft.summary, source.summary, { minSentences: mode.summarySentences[0] }), source.summary, { terms: jobTerms, allowed: added, sourceText }),
+              source.summary,
+              { sourceText, confirmed: added }
+            ),
             source.summary,
             [...protectedKeywords, ...titleTerms(job?.title)]
           ),

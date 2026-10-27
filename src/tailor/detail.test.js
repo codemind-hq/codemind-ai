@@ -69,3 +69,64 @@ test('a skill matches a job term under its parentheses or its acronym, and a bar
   assert.deepEqual(groups[0].items, ['Python', 'FastAPI', 'MCP Protocol (stdio + HTTP)'], 'MCP is the job\'s, so it stays past the one other skill allowed; "API" is not a skill');
   assert.deepEqual(dropped.map((d) => d.skill), ['SvelteKit']);
 });
+
+test('a language, cloud or container platform the resume never shows is never written in; one it shows, or the member confirmed, is', async () => {
+  const { newStackTerms, unbackedStackTerms } = await import('./stack.js');
+  const source = 'Python, FastAPI, Docker and Azure; GitHub Actions CI/CD.';
+  assert.deepEqual(unbackedStackTerms(['Go', 'GCP', 'Kubernetes', 'Azure', 'Python', 'prompt injection'], source), ['Go', 'GCP', 'Kubernetes']);
+  assert.deepEqual(unbackedStackTerms(['Kubernetes'], source, ['K8s']), [], 'confirmed under another name');
+  assert.deepEqual(newStackTerms('Built CI/CD across Azure environments and GCP deployments with Kubernetes release targets.', { sourceText: source }), ['GCP', 'Kubernetes']);
+  assert.deepEqual(newStackTerms('Added 243 tests, with Go services supporting the agent platform.', { sourceText: source }), ['Go']);
+  assert.deepEqual(newStackTerms('Let go of the legacy queue and moved to Azure Service Bus.', { sourceText: source }), [], '"go" the verb is not Go');
+});
+
+test('the same work said twice is said once; two pieces of work that read alike stay', async () => {
+  const { withoutRepeatedBullets } = await import('./detail.js');
+  const twice = 'Built multi-stage CI/CD with immutable artifact patterns, semantic versioning and multi-environment Docker image promotion.';
+  const again = 'Established multi-stage CI/CD with immutable artifact patterns, semantic versioning and Docker image promotion across environments.';
+  const tailored = {
+    form: { experience: [{ company: 'A', achievements: ['Built the evaluation harness.', again] }, { company: 'B', achievements: ['Ran the data platform.', twice] }] },
+    changes: [{ role: 0, kind: 'rewritten', before: 'Evidence: 1,205 tests.', after: again }],
+    estimates: [],
+  };
+  const out = withoutRepeatedBullets(tailored, ['safe rollout']);
+  assert.equal(out.removed, 1);
+  assert.deepEqual(out.form.experience[1].achievements, ['Ran the data platform.'], 'the older role loses its copy on a tie');
+  assert.deepEqual(out.form.experience[0].achievements, ['Built the evaluation harness.', again]);
+  const alike = { form: { experience: [{ company: 'A', achievements: ['Built the billing API on AWS with Python and Postgres for finance.', 'Built the reporting API on AWS with Python and Postgres for finance.'] }] }, changes: [], estimates: [] };
+  assert.equal(withoutRepeatedBullets(alike).removed, 0);
+});
+
+test('a summary counts its figures without its years or its credentials', async () => {
+  const { summaryFigures } = await import('./summary.js');
+  assert.deepEqual(summaryFigures('Senior AI Engineer with 9+ years in ML. Recent systems include Cogentrex, with 176 mechanisms, 100 scenarios and 1,205 tests. 10x Microsoft MVP in AI.'), ['176', '100', '1205']);
+});
+
+test('a tailored resume that runs well onto a third page loses its least relevant bullets, oldest role first, to fit two', async () => {
+  const { withinPageBudget } = await import('./pages.js');
+  const bullet = (i, term = '') => `Built and operated data service number ${i}${term} on the shared platform, cutting the nightly run from six hours to under one for three product teams.`;
+  const experience = Array.from({ length: 6 }, (_, r) => ({ company: `Company ${r}`, title: 'Engineer', period: '2019 – 2021', achievements: Array.from({ length: 9 }, (_, i) => bullet(i, r === 0 ? ' with Python' : '')) }));
+  const out = withinPageBudget({ form: { name: 'A', summary: 'Engineer.', experience }, changes: [], estimates: [] }, { protectedKeywords: ['Python'] });
+  assert.ok(out.cut > 0 && out.cut <= 8);
+  assert.equal(out.form.experience[0].achievements.length, 9, 'the bullets that name the job go last');
+  assert.ok(out.form.experience[5].achievements.length < 9, 'the oldest role gives first');
+  assert.equal(out.changes.filter((c) => c.kind === 'removed').length, out.cut, 'each cut can be put back');
+});
+
+test('a short skills list is topped up from the skills the bullets use, a whole category the cut dropped first', () => {
+  const source = {
+    skills: [],
+    skillGroups: [
+      { category: 'Backend', items: ['Python', 'FastAPI'] },
+      { category: 'Infrastructure', items: ['Docker', 'GitHub Actions', 'MLflow', 'Terraform'] },
+      { category: 'Frontend', items: ['React', 'SvelteKit'] },
+    ],
+  };
+  source.skills = source.skillGroups.flatMap((g) => g.items);
+  const shown = 'Typed ReAct loop in Python on FastAPI. Shipped with Docker and GitHub Actions; models tracked in MLflow.';
+  const { groups } = limitSkills(source, [{ category: 'Backend', items: ['Python', 'FastAPI'] }], { relevant: ['Python'], named: ['Python'], shown });
+  assert.deepEqual(groups, [
+    { category: 'Backend', items: ['Python', 'FastAPI'] },
+    { category: 'Infrastructure', items: ['Docker', 'GitHub Actions', 'MLflow'] },
+  ], 'Terraform is in no bullet; "ReAct" the agent pattern is not React, and SvelteKit alone is no category');
+});

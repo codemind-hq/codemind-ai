@@ -3,6 +3,8 @@ import { hasKeyword, keywordList, sameKeyword, uniqueKeywords } from '../text/ke
 import { structuredResumeToText } from '../resume/structuredResume.js';
 import { fillTailoringGaps, tailorResumeForm } from './service.js';
 import { markAnswered } from './requirements.js';
+import { unbackedStackTerms } from './stack.js';
+import { withinPageBudget } from './pages.js';
 import { postingTerms, splitAssumedTerms, tailorMode, tailorStyle, withoutCuts } from './index.js';
 
 // The whole tailoring of one resume for one job, as the calls run it: the source scored (unless
@@ -83,7 +85,16 @@ export async function runTailoring({
   // out is offered to nobody: twenty resumes read by another grader lost their realism exactly
   // where fourteen or more terms went in, for a tenth of the score. What is not a skill's name
   // ("GitCI/CD?") is never written in.
-  const split = splitAssumedTerms(missing, { job, scoring: before, max: mode.maxAssumedTerms });
+  const offeredSplit = splitAssumedTerms(missing, { job, scoring: before, max: mode.maxAssumedTerms });
+  // A language, cloud or container platform the resume never shows is not the rewrite's to write
+  // in, in any mode (stack.js): it is asked instead ("do you have these?"), and kept out.
+  const unbackedStack = unbackedStackTerms([...offeredSplit.assumed, ...offeredSplit.optional], originalText, confirmed);
+  const backed = (k) => !unbackedStack.some((s) => sameKeyword(s, k));
+  const split = {
+    assumed: offeredSplit.assumed.filter(backed),
+    optional: offeredSplit.optional.filter(backed),
+    leftOut: uniqueKeywords([...offeredSplit.leftOut, ...unbackedStack]),
+  };
   // Score first forces the nice-to-haves in as well, after the required terms and within the
   // same cap: the job's preferred skills are a tenth of the score (ats/breakdown.js), and a
   // resume that names none of them tops out around 85 whatever else it says.
@@ -92,9 +103,10 @@ export async function runTailoring({
   const optional = split.optional.filter((k) => !forced.some((f) => sameKeyword(f, k)));
   const assumedAll = [...assumed, ...optional];
   const allowed = [...confirmed, ...assumedAll];
-  const blockedKeywords = Array.isArray(confirmedKeywords)
-    ? candidates.filter((k) => !hasKeyword(originalText, k) && !allowed.some((c) => sameKeyword(c, k)))
-    : [];
+  const blockedKeywords = uniqueKeywords([
+    ...(Array.isArray(confirmedKeywords) ? candidates.filter((k) => !hasKeyword(originalText, k) && !allowed.some((c) => sameKeyword(c, k))) : []),
+    ...unbackedStack,
+  ]);
 
   const request = { confirmedKeywords, blockedKeywords, evidence, style, instructions, model, meta, serviceTier };
   let tailored = await tailorResumeForm(form, job, { ...request, refocus, scoring: before, assumedKeywords: assumed, optionalKeywords: optional });
@@ -124,6 +136,15 @@ export async function runTailoring({
   // The mode's passes at most: each reaches what the one before did not, and the passes stop
   // when nothing goes in, or when the score does not rise more often than the mode tolerates
   // (score first rolls once more after a flat pass; the others stop).
+  // The finished resume within two pages (pages.js): what the job asks for decides what stays.
+  // Only bullets that name the fewest job terms go, so the last score stands for it.
+  const toPageBudget = (done) => {
+    const budget = withinPageBudget(done, {
+      protectedKeywords: [...(job.skills || []), ...(job.preferredSkills || []), ...postingTerms(job.description, keywordList(after.matchedKeywords))],
+      requirements: job.requirements || [],
+    });
+    return budget.cut ? { ...done, form: budget.form, changes: budget.changes, estimates: budget.estimates } : done;
+  };
   const gapOptions = (scoring) => ({
     scoring,
     confirmedKeywords: confirmed,
@@ -159,7 +180,7 @@ export async function runTailoring({
       if (gapPassProgressed(after, final)) after = final;
       else tailored = rewrite;
     }
-    return { before, after, tailored, style, confirmed, candidates, assumed, assumedAll, split };
+    return { before, after, tailored: toPageBudget(tailored), style, confirmed, candidates, assumed, assumedAll, split };
   }
 
   let flat = 0;
@@ -179,5 +200,5 @@ export async function runTailoring({
     }
   }
 
-  return { before, after, tailored, style, confirmed, candidates, assumed, assumedAll, split };
+  return { before, after, tailored: toPageBudget(tailored), style, confirmed, candidates, assumed, assumedAll, split };
 }

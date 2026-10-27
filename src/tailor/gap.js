@@ -5,7 +5,8 @@ import { MAX_BULLET_CHARS } from '../checks/index.js';
 import { aiTellWords, RESUME_VOICE_RULES } from '../text/voice.js';
 import { fieldNotesFor } from './fieldNotes.js';
 import { losesEvidence } from './bullets.js';
-import { borrowedBullet, losesDetail, lostDetails } from './detail.js';
+import { borrowedBullet, losesDetail, lostDetails, withoutRepeatedBullets } from './detail.js';
+import { newStackTerms } from './stack.js';
 import { claimsClearance, claimsCredential, inventsFact, TENURE_RE, TENURE_WORDS_RE } from './claims.js';
 import { copiedRequirement, echoesRequirement } from './copied.js';
 import { estimateClause, overstatedEstimate, sameFigure, withEstimate, withoutEstimate } from './estimates.js';
@@ -190,7 +191,8 @@ export function applyGapLines(tailored, sourceForm, answer, { confirmedKeywords 
       }
     }
     const copied = copiedRequirement(text, requirements, description);
-    const tells = aiTellWords(text);
+    // A word the resume itself uses is the candidate's, not an AI tell ("harness engineering").
+    const tells = aiTellWords(text, structuredResumeToText(cleanStructuredResume(sourceForm)));
     if (inventsFact(judged, sources) || listLike(text) || copied || tells.length) {
       refuse(line, inventsFact(judged, sources) ? 'states a fact the resume does not' : listLike(text) ? 'reads as a list of tools' : copied ? `repeats the posting ("${copied.slice(0, 60)}")` : `AI-tell words: ${tells.join(', ')}`);
       continue;
@@ -217,6 +219,11 @@ export function applyGapLines(tailored, sourceForm, answer, { confirmedKeywords 
     // Nor a figure or a name the bullet stated dropped, nor another role's bullet told again here (detail.js).
     if (before && losesDetail(before, text)) {
       refuse(line, `drops what the bullet stated (${lostDetails(before, text).slice(0, 4).join(', ') || 'most of its wording'})`);
+      continue;
+    }
+    const stack = newStackTerms(text, { before, sourceText: structuredResumeToText(cleanStructuredResume(sourceForm)), confirmed: [...confirmedKeywords, ...assumedKeywords] });
+    if (stack.length) {
+      refuse(line, `names ${stack.join(', ')}, which the resume never shows`);
       continue;
     }
     const sourceExperience = cleanStructuredResume(sourceForm).experience;
@@ -259,5 +266,7 @@ export function applyGapLines(tailored, sourceForm, answer, { confirmedKeywords 
   }
   // `answered`: the gap ids the lines taken were written for, so a round that runs without a
   // score in between (pipeline.js scoreRounds 'ends') can mark them met before the next one.
-  return { applied, form, changes, estimates, rejected, answered: [...done] };
+  // A gap line that says what another bullet already says is one of the two too many (detail.js).
+  const deduped = withoutRepeatedBullets({ form, changes, estimates }, protectedKeywords);
+  return { applied, form: deduped.form, changes: deduped.changes, estimates: deduped.estimates, rejected, answered: [...done] };
 }
