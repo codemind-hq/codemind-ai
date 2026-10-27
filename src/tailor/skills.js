@@ -45,6 +45,24 @@ const cleanSkill = (skill) => squash(skill).replace(/[\s\-–—]+$/, '');
 /** One skill however it is spaced or punctuated: "AWS incl.EKS" is "AWSincl.EKS". */
 export const skillKey = (skill) => lower(skill).replace(/[^a-z0-9+#]+/g, '');
 
+// A word that names a kind of work, not a skill: the job's "API" written into Backend and API as
+// a skill of its own. One the resume itself lists stays; the rewrite never adds one.
+const GENERIC_SKILL_RE = /^(?:apis?|backend|back-end|frontend|front-end|cloud|software|code|coding|programming|development|systems?|platforms?|tools?|data|technology|engineering)$/i;
+
+/**
+ * The spellings a skill or a job term goes by: itself, without its parentheses, and what the
+ * parentheses hold. "Model Context Protocol (MCP)" is "MCP", so "MCP Protocol (stdio + HTTP)"
+ * names it.
+ */
+export function termForms(term) {
+  const text = squash(term);
+  const inner = [...text.matchAll(/\(([^()]+)\)/g)].map((m) => squash(m[1]));
+  const outer = squash(text.replace(/\([^()]*\)/g, ' '));
+  return [...new Set([text, outer, ...inner].filter((f) => f.length >= 2))];
+}
+/** True when `skill` and `term` name the same thing under any of their spellings (termForms). */
+export const namesSkill = (skill, term) => termForms(skill).some((s) => termForms(term).some((k) => hasKeyword(s, k) || hasKeyword(k, s)));
+
 /**
  * A skill the user was offered and did not confirm stays out of the skills list: that list is
  * a bare claim, with no bullet behind it to show how the skill was used.
@@ -71,7 +89,7 @@ export function tailoredSkillGroups(sourceGroups, draftGroups, { blocked, protec
     for (const skill of allowedSkills(g.items, blocked)) groups = addToSkillGroups(groups, [skill], home.get(lower(skill)) ?? category);
   }
   if (draftGroups.length) {
-    const named = sourceGroups.map((g) => ({ category: g.category, items: g.items.filter((skill) => protectedKeywords.some((k) => hasKeyword(skill, k))) }));
+    const named = sourceGroups.map((g) => ({ category: g.category, items: g.items.filter((skill) => protectedKeywords.some((k) => namesSkill(skill, k))) }));
     groups = mergeSkillGroups(groups, named);
   }
   const listed = groups.flatMap((g) => g.items);
@@ -95,7 +113,7 @@ export function limitSkills(
 ) {
   const sourceKeys = new Set((source.skills || []).map(skillKey));
   const term = (k) => typeof k === 'string' && k.trim();
-  const matches = (skill, terms) => terms.some((k) => term(k) && (hasKeyword(skill, k) || hasKeyword(k, skill)));
+  const matches = (skill, terms) => terms.some((k) => term(k) && namesSkill(skill, k));
   const own = (skill) => sourceKeys.has(skillKey(skill));
   const known = (skill) => Boolean(canonicalSkill(skill));
   // Written in on assumption, never confirmed, not the resume's own and not a skill the dictionary knows.
@@ -104,6 +122,7 @@ export function limitSkills(
     !SOFT_SKILL_RE.test(skill) &&
     !LABEL_RE.test(skill) &&
     !bareAssumption(skill) &&
+    !(GENERIC_SKILL_RE.test(cleanSkill(skill)) && !own(skill)) &&
     (matches(skill, named) || (!JOB_TITLE_SKILL_RE.test(skill) && (own(skill) || known(skill))));
   const flat = groups.length === 1 && !groups[0].category;
 
@@ -126,7 +145,7 @@ export function limitSkills(
   const isRelevant = (skill) => matches(skill, [...relevant, ...named]);
   // Where the job lists a skill: its own stack comes out in its order, the rest after.
   const rank = (skill) => {
-    const at = named.findIndex((k) => term(k) && (hasKeyword(skill, k) || hasKeyword(k, skill)));
+    const at = named.findIndex((k) => term(k) && namesSkill(skill, k));
     return at < 0 ? named.length : at;
   };
   const kept = groups.map(() => []);

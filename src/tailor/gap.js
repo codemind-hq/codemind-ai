@@ -5,6 +5,7 @@ import { MAX_BULLET_CHARS } from '../checks/index.js';
 import { aiTellWords, RESUME_VOICE_RULES } from '../text/voice.js';
 import { fieldNotesFor } from './fieldNotes.js';
 import { losesEvidence } from './bullets.js';
+import { borrowedBullet, losesDetail, lostDetails } from './detail.js';
 import { claimsClearance, claimsCredential, inventsFact, TENURE_RE, TENURE_WORDS_RE } from './claims.js';
 import { copiedRequirement, echoesRequirement } from './copied.js';
 import { estimateClause, overstatedEstimate, sameFigure, withEstimate, withoutEstimate } from './estimates.js';
@@ -69,7 +70,7 @@ ${stated.length ? `\nFIGURES ALREADY STATED (each is said once; a line's figure 
 ${fieldNotesFor(job)}
 
 Rules:
-- One line per gap, as { id, role, from, text, estimate }: "role" is the role it goes in (the most recent role that does that kind of work); "from" is the "i" of the bullet it extends — the bullet that comes closest to the requirement — and "text" the whole bullet as it should now read; or "from" is null and "text" a new bullet, when no bullet comes close.
+- One line per gap, as { id, role, from, text, estimate }: "role" is the role it goes in (the most recent role that does that kind of work); "from" is the "i" of the bullet it extends — the bullet that comes closest to the requirement — and "text" the whole bullet as it should now read, still stating every number and name (tool, model, product, client) the bullet states — the program refuses a line that drops one; or "from" is null and "text" a new bullet, when no bullet comes close. Never another role's work or wording: a line says only what its own role did.
 - No two lines extend the same bullet: the second would overwrite the first. When two gaps fit one bullet, answer both in that one line, or take the next-closest bullet, or a new one.
 - The line is a real piece of work, not the requirement said back. It names the specific thing from this role — the product, pipeline, service, dataset, client or release the role's other bullets name — says what was done to it, and how, with the requirement's term as the tool or method used once. The program refuses a line that shares the requirement's words and names nothing of the role's own. Not: "Participated in Agile teams and Software Development Lifecycle practices to iterate over design and development cycles" (the posting paraphrased). But: "Ran two-week sprints for the reporting pipeline with the analytics lead, shipping a release each sprint and reviewing every data-model change." Not: "Used AI-assisted development tools to draft and inspect application code" but: "Drafted the caller-ID service's migration scripts with Copilot, then verified each against the Postgres schema and the existing tests before release." In the same voice and length as the bullets around it: one sentence, under 30 words and ${MAX_BULLET_CHARS} characters (the program refuses a longer one), opening with the action. At most two technologies the bullet did not already name; never a list of tools; never the requirement's adjectives ("judiciously", "strong", "comfortable", "extensive").
 - A requirement about the size or kind of organization, years in a field, or a frame of mind ("comfort with ambiguity") is not a line to write: the roles as they stand answer it, or nothing does. Skip it.
@@ -211,6 +212,17 @@ export function applyGapLines(tailored, sourceForm, answer, { confirmedKeywords 
     // Nor the bullet as it was with a term glued onto its list ("…, Kafka, REST APIs, …").
     if (before && (crossesPlatform(before, text, assumedKeywords) || gluedTerm(before, text, assumedKeywords))) {
       refuse(line, crossesPlatform(before, text, assumedKeywords) ? "a term of another platform on this bullet" : 'a term glued onto the bullet as one more list item');
+      continue;
+    }
+    // Nor a figure or a name the bullet stated dropped, nor another role's bullet told again here (detail.js).
+    if (before && losesDetail(before, text)) {
+      refuse(line, `drops what the bullet stated (${lostDetails(before, text).slice(0, 4).join(', ') || 'most of its wording'})`);
+      continue;
+    }
+    const sourceExperience = cleanStructuredResume(sourceForm).experience;
+    const elsewhere = sourceExperience.filter((_, i) => i !== line.role).flatMap((e) => e.achievements);
+    if (borrowedBullet(text, { ownText: (sourceRole?.achievements || []).join('\n'), elsewhere, jobText: [...protectedKeywords, ...assumedKeywords, ...confirmedKeywords].join('\n') })) {
+      refuse(line, "repeats another role's bullet");
       continue;
     }
     // A new bullet only within the mode's allowance for the role (one, looking real first).

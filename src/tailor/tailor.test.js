@@ -90,7 +90,7 @@ test('an achievement the summary or a bullet already says is left off; one with 
     ...WRITTEN,
     summary: source.summary,
     experience: [
-      { ...WRITTEN.experience[0], achievements: [{ text: 'Built full-stack AI features with React, Next.js, Python, FastAPI, PostgreSQL, Redis and LLM APIs.', from: 0 }, { text: 'Shipped iOS and macOS applications to the App Store.', from: 1 }] },
+      { ...WRITTEN.experience[0], achievements: [{ text: 'Built full-stack AI features on AWS with React, Next.js, Python, FastAPI, PostgreSQL, Redis and LLM APIs.', from: 0 }, { text: 'Shipped iOS and macOS applications to the App Store.', from: 1 }] },
       WRITTEN.experience[1],
     ],
     achievements: source.achievements,
@@ -331,8 +331,8 @@ test('a rewrite that only swaps words is not a change; one that surfaces what th
 });
 
 test('a rewrite that drops what the job asks for is refused: the original bullet stands', () => {
-  const vaguer = role([{ text: 'Built cloud data services for internal teams.', from: 0 }, { text: 'Defined core data models.', from: 1 }]);
-  const { form, changes } = tailoredResumeForm(SOURCE, vaguer, { protectedKeywords: ['AWS'] });
+  const vaguer = role([{ text: 'Built cloud services on AWS for internal teams.', from: 0 }, { text: 'Defined core data models.', from: 1 }]);
+  const { form, changes } = tailoredResumeForm(SOURCE, vaguer, { protectedKeywords: ['data services'] });
   assert.deepEqual(form.experience[0].achievements, ['Built data services on AWS.', 'Defined core data models.']);
   assert.deepEqual(changes, []);
   assert.equal(tailoredResumeForm(SOURCE, vaguer, { protectedKeywords: ['Go'] }).changes.length, 1, 'a keyword the bullet never had is not lost');
@@ -1154,7 +1154,7 @@ test('a bullet that is the source with a term glued onto its list is refused; a 
   const kafka = 'Designed distributed backend services using Python, Node.js, Kafka, REST APIs, PostgreSQL, Redis, and asynchronous processing for customer-facing and internal product workflows.';
   const gap = applyGapLines(tailored, source, { lines: [{ id: 0, role: 0, from: 0, text: kafka, estimate: '' }] }, { assumedKeywords: ['Kafka'], requirements: [{ text: 'Kafka' }] });
   assert.equal(gap.applied, 0, 'the gap pass refuses it too');
-  const work = 'Designed Kafka-backed event pipelines between the backend services, with consumers in Python and Node.js feeding PostgreSQL and Redis.';
+  const work = 'Designed Kafka-backed event pipelines between the REST backend services, with consumers in Python and Node.js feeding PostgreSQL and Redis.';
   assert.equal(applyGapLines(tailored, source, { lines: [{ id: 0, role: 0, from: 0, text: work, estimate: '' }] }, { assumedKeywords: ['Kafka'], requirements: [{ text: 'Kafka' }] }).applied, 1, 'a line about work with it stands');
 });
 

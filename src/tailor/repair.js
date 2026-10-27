@@ -5,6 +5,7 @@ import { MAX_BULLET_CHARS } from '../checks/index.js';
 import { aiTellWords, RESUME_VOICE_RULES } from '../text/voice.js';
 import { inventsFact } from './claims.js';
 import { copiedRequirement, echoesRequirement } from './copied.js';
+import { lostDetails } from './detail.js';
 import { tailorMode } from './style.js';
 import { listSentences, MIN_SUMMARY_WORDS, summaryWords } from './summary.js';
 import { lower, sentencesOf } from './text.js';
@@ -30,7 +31,8 @@ function lineProblems(text, { requirements = [], description = '', summary = fal
   const problems = [];
   const words = aiTellWords(text);
   if (words.length) problems.push(`it uses ${words.map((w) => `"${w}"`).join(', ')}, which reads as AI-written; say the plain thing`);
-  if (!summary && text.length > MAX_BULLET_CHARS) problems.push(`it is ${text.length} characters; keep it under ${MAX_BULLET_CHARS}`);
+  // A bullet as long as the one it rewrites is not too long: cutting it to length would cut its details.
+  if (!summary && text.length > Math.max(MAX_BULLET_CHARS, before.length)) problems.push(`it is ${text.length} characters; keep it under ${MAX_BULLET_CHARS}`);
   // What the scorer (score/verdicts.js) counts as a mention and not evidence.
   if (!summary && listLike(text)) problems.push('it reads as a list of tools; keep them, and say what was built or run with them');
   const copied = copiedRequirement(text, requirements, description);
@@ -135,7 +137,7 @@ export function applyRepairs(tailored, targets, answer, { protectedKeywords = []
     const problems = target.role === null ? summaryProblems(text, { requirements, description, sentences }) : lineProblems(text, { requirements, description, roleText: target.roleText ?? null, before: target.before || '' });
     const better = problems.length < target.problems.length;
     const keepsTerms = !protectedKeywords.some((k) => hasKeyword(target.text, k) && !hasKeyword(text, k));
-    if (!better || !keepsTerms || (tailored.sources && inventsFact(text, tailored.sources))) continue;
+    if (!better || !keepsTerms || lostDetails(target.text, text).length || (tailored.sources && inventsFact(text, tailored.sources))) continue;
     if (target.role === null) {
       form.summary = text;
     } else {

@@ -158,7 +158,7 @@ test('tailor: the rewrite, its repair round, then the gap pass and its own repai
   const options = { scoring, confirmedKeywords: ['Kafka'], assumedKeywords: [], style: 'balanced', model: MODEL, meta: { userId: 'u1' } };
   const tailored = await tailorResumeForm(FORM, JOB, options);
   const gaps = await fillTailoringGaps(tailored, FORM, JOB, { ...options, scoring: { ...scoring, requirements: scoring.requirements } });
-  assert.deepEqual(kinds(), ['tailor.v16', 'tailor.v16+repair', 'tailor.v16+gaps', 'tailor.v16+gaps-repair'], 'every step of the pipeline ran');
+  assert.deepEqual(kinds(), ['tailor.v17', 'tailor.v17+repair', 'tailor.v17+gaps', 'tailor.v17+gaps-repair'], 'every step of the pipeline ran');
   assert.ok(gaps.form.experience[0].achievements.length >= 2);
   snapshot('tailor');
 });
@@ -314,6 +314,6 @@ test('the tailoring pipeline: scored, rewritten, rescored, and the gap passes of
     });
     outcomes.push(`${style}: ${run.before.score} → ${run.after.score}; assumed ${JSON.stringify(run.assumedAll)}; bullets ${JSON.stringify(run.tailored.form.experience[0].achievements)}`);
   }
-  assert.ok(kinds().includes('tailor.v16+gaps'), 'the gap passes ran');
+  assert.ok(kinds().includes('tailor.v17+gaps'), 'the gap passes ran');
   matchSnapshot('pipeline', `${outcomes.join('\n')}\n\n${describeCalls(llm)}`);
 });

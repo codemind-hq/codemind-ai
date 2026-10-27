@@ -4,9 +4,9 @@ import { factSources } from '../checks/index.js';
 import { traceBullets, writtenBullets } from './bullets.js';
 import { inventsFact } from './claims.js';
 import { resumeHeadline } from './headline.js';
-import { allowedSkills, backedSkillGroups, limitSkills, tailoredSkillGroups } from './skills.js';
+import { allowedSkills, backedSkillGroups, limitSkills, namesSkill, tailoredSkillGroups } from './skills.js';
 import { tailorMode } from './style.js';
-import { summaryWithoutClaims, summaryWithoutLists, summaryWithSourceTenure, titleTerms } from './summary.js';
+import { summaryWithoutClaims, summaryWithoutLists, summaryWithSourceCredentials, summaryWithSourceTenure, titleTerms } from './summary.js';
 import { contentWords, lower, unique } from './text.js';
 
 // ── The tailored form ──────────────────────────────────────────────────────
@@ -123,6 +123,8 @@ export function tailoredResumeForm(
   const estimated = [];
   // `list` is the role's estimates, `taken` every earlier role's: a figure is stated once in the resume.
   const budget = { left: mode.maxEstimates, list: [], taken: estimated };
+  // What the job asks for by name: the words a line may share with another role's bullet.
+  const jobText = [...protectedKeywords, ...(assumedKeywords || []), ...confirmed, ...(job?.skills || []), ...(job?.preferredSkills || [])].join('\n');
   const experience = source.experience.map((entry, role) => {
     if (!roles[role]) return entry;
     budget.list = [];
@@ -135,6 +137,8 @@ export function tailoredResumeForm(
       newBullets: mode.newBulletsPerRole,
       limits,
       estimates: budget,
+      elsewhere: source.experience.filter((_, i) => i !== role).flatMap((e) => e.achievements),
+      jobText,
     });
     changes.push(...traced.changes.map((c) => ({ role, ...c })));
     estimated.push(...budget.list.filter((e) => traced.bullets.includes(e.text)).map((e) => ({ role, ...e })));
@@ -162,7 +166,7 @@ export function tailoredResumeForm(
     // What the user confirmed is in the skills list whether or not the model remembered it.
     const kept = allowedSkills(draft.skills.length ? draft.skills : source.skills, blockedKeywords);
     // A skill the job names stays, even when the model trimmed it away with the irrelevant ones.
-    const named = draft.skills.length ? source.skills.filter((skill) => protectedKeywords.some((k) => hasKeyword(skill, k))) : [];
+    const named = draft.skills.length ? source.skills.filter((skill) => protectedKeywords.some((k) => namesSkill(skill, k))) : [];
     skills = unique([...kept, ...named, ...confirmed.filter((k) => !kept.some((skill) => hasKeyword(skill, k)))]);
   }
   // A skill the posting's own text names is relevant whether or not its skills list has it
@@ -178,10 +182,13 @@ export function tailoredResumeForm(
   const jobTerms = [...protectedKeywords, ...(job?.skills || []), ...(job?.preferredSkills || [])];
   const summary =
     draft.summary && !inventsFact(draft.summary, sources)
-      ? summaryWithSourceTenure(
-          summaryWithoutClaims(summaryWithoutLists(draft.summary, source.summary), source.summary, { terms: jobTerms, allowed: added, sourceText }),
-          source.summary,
-          [...protectedKeywords, ...titleTerms(job?.title)]
+      ? summaryWithSourceCredentials(
+          summaryWithSourceTenure(
+            summaryWithoutClaims(summaryWithoutLists(draft.summary, source.summary), source.summary, { terms: jobTerms, allowed: added, sourceText }),
+            source.summary,
+            [...protectedKeywords, ...titleTerms(job?.title)]
+          ),
+          source.summary
         )
       : source.summary;
   // A skill new to the resume with no line of work behind it comes off; the resume's own skills

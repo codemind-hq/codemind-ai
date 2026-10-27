@@ -1,6 +1,7 @@
 import { hasKeyword } from '../text/keywords.js';
 import { cleanListItem } from '../resume/structuredResume.js';
 import { claimsClearance, claimsCredential, inventsFact } from './claims.js';
+import { borrowedBullet, losesDetail } from './detail.js';
 import { estimateClause, overstatedEstimate, sameFigure, withoutEstimate } from './estimates.js';
 import { crossesPlatform, gluedTerm, tooManyTerms } from './terms.js';
 import { lower, overlap, RELATED, SAME_WORDING, sameWording, termsIn, unique } from './text.js';
@@ -45,13 +46,20 @@ export function writtenBullets(achievements) {
  * as that source said it, and so is one that states a figure the resume never gave; one with
  * no source stays only when it carries a keyword the user confirmed — or, up to `newBullets`
  * a role (the mode's allowance, style.js), whenever it states no figure. `limits` are the
- * mode's caps on assumed terms a line and a role may take (terms.js tooManyTerms). Returns the
- * bullets to keep and what changed, for the user to review.
+ * mode's caps on assumed terms a line and a role may take (terms.js tooManyTerms). A rewrite
+ * that drops a figure or a name its source stated is put back as well (detail.js), and a line
+ * that repeats a bullet of another role (`elsewhere`, beyond the job's terms `jobText`) is
+ * refused. Returns the bullets to keep and what changed, for the user to review.
  */
-export function traceBullets(sourceBullets, written, { confirmed, assumed = [], blocked = [], sources, protectedKeywords = [], newBullets = 0, limits = {}, estimates = { left: 0, list: [] } }) {
+export function traceBullets(
+  sourceBullets,
+  written,
+  { confirmed, assumed = [], blocked = [], sources, protectedKeywords = [], newBullets = 0, limits = {}, estimates = { left: 0, list: [] }, elsewhere = [], jobText = '' }
+) {
   const kept = [];
   const changes = [];
   const used = new Set();
+  const borrowed = (text) => Boolean(borrowedBullet(text, { ownText: sourceBullets.join('\n'), elsewhere, jobText }));
   // The assumed terms the role's kept lines carry so far: a line that brings more than a line
   // may, or takes the role past its cap (terms.js), reads as the posting pasted in, and is
   // refused as a rewrite is (the source bullet stands). So is a line that is the source bullet
@@ -73,7 +81,7 @@ export function traceBullets(sourceBullets, written, { confirmed, assumed = [], 
   let fresh = 0;
   const mayStand = (text) => !blocked.some((k) => hasKeyword(text, k)) && (mentionsAdded(text) || fresh < newBullets);
   const added = (text) => {
-    if (tooDense(text)) return;
+    if (tooDense(text) || borrowed(text)) return;
     if (!mentionsAdded(text)) fresh += 1;
     kept.push(text);
     noteTerms(text);
@@ -123,6 +131,8 @@ export function traceBullets(sourceBullets, written, { confirmed, assumed = [], 
       !/\d/.test(before) &&
       !inventsFact(plain, sources) &&
       !losesEvidence(before, plain, protectedKeywords) &&
+      !losesDetail(before, plain) &&
+      !borrowed(plain) &&
       !tooDense(plain, before) &&
       !crossesPlatform(before, plain, assumed) &&
       !claimsClearance(plain) &&
@@ -135,15 +145,21 @@ export function traceBullets(sourceBullets, written, { confirmed, assumed = [], 
       changes.push({ kind: 'rewritten', before, after: answer.text });
       continue;
     }
+    // A line about the same work that says less of it is a worse rewrite; one about other work
+    // drops nothing, since the bullet it cites stays beside it (below).
+    const resembles = overlap(before, bullet.text) >= RELATED;
+    const saysLess = losesDetail(before, bullet.text);
     const rejected =
       inventsFact(bullet.text, sources) ||
       cosmetic(before, bullet.text, protectedKeywords) ||
       losesEvidence(before, bullet.text, protectedKeywords) ||
+      (resembles && saysLess) ||
+      borrowed(bullet.text) ||
       tooDense(bullet.text, before) ||
       crossesPlatform(before, bullet.text, assumed) ||
       claimsClearance(bullet.text);
     if (lower(before) === lower(bullet.text) || rejected) kept.push(before);
-    else if (overlap(before, bullet.text) >= RELATED || mentionsAdded(bullet.text)) {
+    else if ((resembles || mentionsAdded(bullet.text)) && !saysLess) {
       kept.push(bullet.text);
       noteTerms(bullet.text);
       changes.push({ kind: 'rewritten', before, after: bullet.text });

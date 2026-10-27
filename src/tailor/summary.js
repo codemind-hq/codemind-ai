@@ -1,6 +1,7 @@
 import { hasKeyword } from '../text/keywords.js';
 import { listLike } from '../ats/index.js';
 import { TENURE_RE } from './claims.js';
+import { figuresOf, lostDetails, namesOf } from './detail.js';
 import { lower, sameTerm, sentencesOf, shows } from './text.js';
 
 // ── Summary: the tenure sentence ───────────────────────────────────────────
@@ -62,6 +63,34 @@ export function summaryWithoutClaims(draft, source, { terms = [], allowed = [], 
   const claims = (s) => terms.some((k) => typeof k === 'string' && k.trim() && names(s, k) && !names(sourceText, k) && !allowed.some((a) => sameTerm(a, k) || names(a, k)));
   const kept = sentencesOf(draft).filter((s) => own.has(lower(s)) || !claims(s));
   return kept.length ? kept.join('').replace(/\s+/g, ' ').trim() : source;
+}
+
+// A sentence of the source summary that states a standing the work alone does not show: an
+// award, a book, a patent, a talk. "10x Microsoft MVP in AI." and "Author of Master Machine
+// Learning with Python (BPB Publishing)." went missing from a Staff AI Engineer tailoring whose
+// posting asked for public writing; the rewrite has no reason to drop such a line.
+const CREDENTIAL_RE =
+  /\b(?:MVPs?|awards?|awarded|author(?:ed)?|co-?author(?:ed)?|published|publications?|patents?|patented|speaker|spoke at|keynote|fellow(?:ship)?|winner|won|maintainer|Google Developer Expert|GDE|Kaggle|champion|top \d+%?)\b/i;
+const MAX_CREDENTIAL_CHARS = 160;
+// Half or more of the sentence's details gone from the draft and it is not said there.
+const CREDENTIAL_LOST = 0.5;
+
+/**
+ * The draft summary with every short credential sentence of the source's that it dropped put
+ * back at its end. A sentence counts as dropped when half or more of its figures and names
+ * (detail.js) are nowhere in the draft.
+ */
+export function summaryWithSourceCredentials(draft, source) {
+  const missing = sentencesOf(source)
+    .map((s) => s.trim())
+    .filter((s) => s.length <= MAX_CREDENTIAL_CHARS && CREDENTIAL_RE.test(s))
+    .filter((s) => {
+      const details = [...figuresOf(s), ...namesOf(s)];
+      return details.length > 0 && lostDetails(s, draft).length / details.length >= CREDENTIAL_LOST;
+    });
+  if (!missing.length) return draft;
+  const text = String(draft || '').trim();
+  return [/[.!?]$/.test(text) ? text : `${text}.`, ...missing].join(' ');
 }
 
 /**

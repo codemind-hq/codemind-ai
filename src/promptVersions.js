@@ -3,7 +3,7 @@
 // version is here, so one file shows what each prompt is at.
 export const PROMPT_VERSIONS = {
   score: 'score.v6',
-  tailor: 'tailor.v16',
+  tailor: 'tailor.v17',
   coverLetter: 'coverLetter.v6',
   answer: 'answer.v6',
   parseResume: 'parseResume.v8',
