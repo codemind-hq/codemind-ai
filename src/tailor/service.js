@@ -87,49 +87,97 @@ export async function tailorResumeForm(
  * @param {object} tailored A tailoring (tailorResumeForm's result).
  * @param {import('../types.js').ResumeForm} form The source resume.
  * @param {import('../types.js').Job} job
- * @param {{ scoring: import('../types.js').Scoring, confirmedKeywords?: string[], evidence?: object[], assumedKeywords?: string[], protectedKeywords?: string[], style?: import('../types.js').TailorStyle, model: string, meta?: import('../types.js').CallMeta }} options
- * @returns {Promise<object>} The tailoring with `applied`, how many lines went in, and `rejected`.
+ * A line refused for repeating the posting's wording is reworded by one repair call
+ * (repairGapLines) — after this pass, or, with `repair` false, by the caller once the passes are
+ * done: the lines come back as `copied`.
+ *
+ * @param {{ scoring: import('../types.js').Scoring, confirmedKeywords?: string[], evidence?: object[], assumedKeywords?: string[], protectedKeywords?: string[], style?: import('../types.js').TailorStyle, model: string, meta?: import('../types.js').CallMeta, repair?: boolean }} options
+ * @returns {Promise<object>} The tailoring with `applied`, how many lines went in, `rejected`, and `copied`.
  */
-export async function fillTailoringGaps(tailored, form, job, { scoring, confirmedKeywords = [], evidence = [], assumedKeywords = [], protectedKeywords = [], style, model, meta = {}, serviceTier }) {
+export async function fillTailoringGaps(tailored, form, job, { scoring, confirmedKeywords = [], evidence = [], assumedKeywords = [], protectedKeywords = [], style, model, meta = {}, serviceTier, repair = true }) {
   style = tailorStyle(style);
   // The skills it may write in: what the user confirmed and what the tailoring was allowed to assume.
   const prompt = buildGapPrompt({ tailoredForm: tailored.form, scoring, job, estimates: tailored.estimates, allowedTerms: [...confirmedKeywords, ...assumedKeywords], style });
-  if (!prompt) return { ...tailored, applied: 0 };
+  if (!prompt) return { ...tailored, applied: 0, copied: [] };
   const { data } = await complete(
     { model, reasoningEffort: tailorEffort(model), system: prompt.system, user: prompt.user, json: true, responseFormat: GAP_RESPONSE_FORMAT, temperature: 0.3, serviceTier },
     { ...meta, kind: 'tailor', promptVersion: `${PROMPT_VERSIONS.tailor}+gaps` }
   );
-  const requirements = Array.isArray(job?.requirements) ? job.requirements : [];
-  const options = { confirmedKeywords, evidence, assumedKeywords, protectedKeywords, requirements, description: job?.description || '', style };
-  let merged = applyGapLines(tailored, form, data, options);
-  // A line refused for repeating the posting's wording is usually the right work in the
-  // requirement's own phrase (the main refusal left on three prod cases once the figure and
-  // length ones were fixed): one repair call rewords those lines, and the ones that come back
-  // in the candidate's words go in after the rest. A failed repair leaves them out, as before.
-  const copied = (merged.rejected || []).filter((r) => r.reason.startsWith('repeats the posting'));
-  if (copied.length) {
-    try {
-      const lines = (Array.isArray(data?.lines) ? data.lines : []).filter((l) => copied.some((r) => r.id === l?.id));
-      const targets = lines.map((l, id) => ({ id, role: l.role, text: l.text, problems: ['it repeats the posting\'s wording; say what the candidate did, naming the product or system, in their own words'] }));
-      const prompt = buildRepairPrompt(targets, { style });
-      const { data: fixed } = await complete(
-        { model, reasoningEffort: tailorEffort(model), system: prompt.system, user: prompt.user, json: true, responseFormat: REPAIR_RESPONSE_FORMAT, temperature: 0.2, serviceTier },
-        { ...meta, kind: 'tailor', promptVersion: `${PROMPT_VERSIONS.tailor}+gaps-repair` }
-      );
-      const byId = new Map((Array.isArray(fixed?.lines) ? fixed.lines : []).filter((l) => Number.isInteger(l?.id) && typeof l.text === 'string' && l.text.trim()).map((l) => [l.id, l.text]));
-      // A reworded line keeps its estimate only where the clause survived the rewording.
-      const reworded = lines
-        .map((l, id) => (byId.has(id) ? { ...l, text: byId.get(id), estimate: typeof l.estimate === 'string' && byId.get(id).includes(l.estimate) ? l.estimate : '' } : null))
-        .filter(Boolean);
-      if (reworded.length) {
-        const again = applyGapLines({ ...tailored, form: merged.form, changes: merged.changes, estimates: merged.estimates }, form, { lines: reworded }, options);
-        merged = { ...again, applied: merged.applied + again.applied, rejected: [...merged.rejected.filter((r) => !copied.includes(r)), ...again.rejected] };
-      }
-    } catch {
-      // the lines stay out
-    }
+  const merged = applyGapLines(tailored, form, data, gapLineOptions(job, { confirmedKeywords, evidence, assumedKeywords, protectedKeywords, style }));
+  const filled = { ...tailored, form: merged.form, changes: merged.changes, estimates: merged.estimates, applied: merged.applied, rejected: merged.rejected, answered: merged.answered };
+  const copied = copiedLines(data, merged.rejected, tailored.form);
+  if (!repair || !copied.length) return { ...filled, copied: repair ? [] : copied };
+  const repaired = await repairGapLines(filled, form, job, copied, { confirmedKeywords, evidence, assumedKeywords, protectedKeywords, style, model, meta, serviceTier });
+  return {
+    ...repaired,
+    applied: filled.applied + repaired.applied,
+    rejected: [...filled.rejected.filter((r) => !isCopied(r)), ...repaired.rejected],
+    answered: [...filled.answered, ...repaired.answered],
+    copied: [],
+  };
+}
+
+const gapLineOptions = (job, { confirmedKeywords = [], evidence = [], assumedKeywords = [], protectedKeywords = [], style }) => ({
+  confirmedKeywords,
+  evidence,
+  assumedKeywords,
+  protectedKeywords,
+  requirements: Array.isArray(job?.requirements) ? job.requirements : [],
+  description: job?.description || '',
+  style,
+});
+const isCopied = (r) => r.reason.startsWith('repeats the posting');
+
+/**
+ * The lines of a gap answer refused for repeating the posting's wording, each with the bullet it
+ * rewrote as it read then (`target`, null for a new line): a later pass may have moved that
+ * bullet, so the repair finds it again by its text.
+ */
+function copiedLines(data, rejected, formBefore) {
+  const ids = new Set((rejected || []).filter(isCopied).map((r) => r.id));
+  return (Array.isArray(data?.lines) ? data.lines : [])
+    .filter((l) => l && ids.has(l.id))
+    .map((l) => ({ ...l, target: Number.isInteger(l.from) ? (formBefore.experience?.[l.role]?.achievements?.[l.from] ?? null) : null }));
+}
+
+/**
+ * One repair call for gap lines refused for repeating the posting's wording (`lines`, from
+ * fillTailoringGaps): such a line is usually the right work in the requirement's own phrase (the
+ * main refusal left on three prod cases once the figure and length ones were fixed), so it is
+ * reworded and offered to the gap checks again. A line for a gap `answered` since is dropped, and
+ * so is one whose bullet is gone. A failed repair leaves the lines out. Returns the tailoring with
+ * `applied`, `rejected` and `answered`. Recorded as the tailor prompt's "+gaps-repair".
+ */
+export async function repairGapLines(tailored, form, job, lines, { confirmedKeywords = [], evidence = [], assumedKeywords = [], protectedKeywords = [], style, model, meta = {}, serviceTier, answered = [] }) {
+  const done = new Set(answered);
+  const open = lines
+    .filter((l) => !done.has(l.id))
+    .map((l) => {
+      if (l.target === null) return { ...l, from: null };
+      const at = tailored.form.experience?.[l.role]?.achievements?.indexOf(l.target) ?? -1;
+      return at < 0 ? null : { ...l, from: at };
+    })
+    .filter(Boolean);
+  const none = { ...tailored, applied: 0, rejected: [], answered: [] };
+  if (!open.length) return none;
+  try {
+    const targets = open.map((l, id) => ({ id, role: l.role, text: l.text, problems: ['it repeats the posting\'s wording; say what the candidate did, naming the product or system, in their own words'] }));
+    const prompt = buildRepairPrompt(targets, { style });
+    const { data: fixed } = await complete(
+      { model, reasoningEffort: tailorEffort(model), system: prompt.system, user: prompt.user, json: true, responseFormat: REPAIR_RESPONSE_FORMAT, temperature: 0.2, serviceTier },
+      { ...meta, kind: 'tailor', promptVersion: `${PROMPT_VERSIONS.tailor}+gaps-repair` }
+    );
+    const byId = new Map((Array.isArray(fixed?.lines) ? fixed.lines : []).filter((l) => Number.isInteger(l?.id) && typeof l.text === 'string' && l.text.trim()).map((l) => [l.id, l.text]));
+    // A reworded line keeps its estimate only where the clause survived the rewording.
+    const reworded = open
+      .map((l, id) => (byId.has(id) ? { id: l.id, role: l.role, from: l.from, text: byId.get(id), estimate: typeof l.estimate === 'string' && byId.get(id).includes(l.estimate) ? l.estimate : '' } : null))
+      .filter(Boolean);
+    if (!reworded.length) return none;
+    const again = applyGapLines(tailored, form, { lines: reworded }, gapLineOptions(job, { confirmedKeywords, evidence, assumedKeywords, protectedKeywords, style }));
+    return { ...tailored, form: again.form, changes: again.changes, estimates: again.estimates, applied: again.applied, rejected: again.rejected, answered: again.answered };
+  } catch {
+    return none; // the lines stay out
   }
-  return { ...tailored, form: merged.form, changes: merged.changes, estimates: merged.estimates, applied: merged.applied, rejected: merged.rejected };
 }
 
 /**

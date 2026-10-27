@@ -29,7 +29,11 @@ function cosmetic(before, after, protectedKeywords) {
  */
 export const losesEvidence = (before, after, protectedKeywords) => protectedKeywords.some((k) => hasKeyword(before, k) && !hasKeyword(after, k));
 
-/** The model's bullets for one role as [{ text, from, estimate }], whatever shape they arrived in. */
+/**
+ * The model's bullets for one role as [{ text, from, estimate }], whatever shape they arrived in.
+ * One with no text that names its source is that bullet kept as the resume has it (text ''): the
+ * model is told not to retype what it does not change, which was half the rewrite's output.
+ */
 export function writtenBullets(achievements) {
   if (!Array.isArray(achievements)) return [];
   return achievements
@@ -38,7 +42,7 @@ export function writtenBullets(achievements) {
         ? { text: cleanListItem(a.text), from: Number.isInteger(a.from) ? a.from : null, estimate: typeof a.estimate === 'string' ? a.estimate.trim() : '' }
         : { text: cleanListItem(a), from: null, estimate: '' }
     )
-    .filter((b) => b.text);
+    .filter((b) => b.text || b.from !== null);
 }
 
 /**
@@ -92,6 +96,14 @@ export function traceBullets(
   };
 
   for (const answer of written) {
+    // Kept as the resume has it (writtenBullets): the source bullet, in the model's order, once.
+    if (!answer.text) {
+      if (sourceBullets[answer.from] !== undefined && !used.has(answer.from)) {
+        used.add(answer.from);
+        kept.push(sourceBullets[answer.from]);
+      }
+      continue;
+    }
     // The bullet without its estimate is what is traced; the estimate is judged on its own below.
     // A clause with no figure in it is not an estimate ("…, using Spark"): the bullet is traced whole.
     const stripped = /\d/.test(answer.estimate) ? withoutEstimate(answer.text, answer.estimate) : null;

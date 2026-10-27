@@ -1,7 +1,7 @@
 import { quickScoreResume } from '../ats/service.js';
 import { hasKeyword, keywordList, sameKeyword, uniqueKeywords } from '../text/keywords.js';
 import { structuredResumeToText } from '../resume/structuredResume.js';
-import { fillTailoringGaps, tailorResumeForm } from './service.js';
+import { fillTailoringGaps, repairGapLines, tailorResumeForm } from './service.js';
 import { markAnswered } from './requirements.js';
 import { unbackedStackTerms } from './stack.js';
 import { withinPageBudget } from './pages.js';
@@ -25,6 +25,9 @@ import { postingTerms, splitAssumedTerms, tailorMode, tailorStyle, withoutCuts }
 // of four, at the cost of the per-pass gate, which the scorer's own noise makes a weak one.
 const SCORE_NOISE = 3;
 export const SCORE_ROUNDS = ['each', 'ends'];
+// 'ends' passes: a gap is asked at most this often, and a pass landing fewer lines is the last.
+const MAX_GAP_TRIES = 2;
+const MIN_PASS_LINES = 2;
 const metCount = (scoring) =>
   [...(scoring?.requirements || []), ...(scoring?.requiredSkillVerdicts || []), ...(scoring?.preferredSkillVerdicts || [])].filter((v) => v?.verdict === 'met').length;
 /** True when the gap pass that produced `next` moved the tailoring forward from `prior`. */
@@ -164,15 +167,38 @@ export async function runTailoring({
     const rewrite = tailored;
     let verdicts = after;
     let applied = 0;
+    // How often each gap was answered with a line the checks refused. A Staff AI Engineer
+    // tailoring asked four passes for the same 13-20 lines and kept one or two a pass: a gap
+    // refused MAX_GAP_TRIES times is not asked again, and a pass that lands fewer than
+    // MIN_PASS_LINES is the last, since the next would ask what this one could not answer.
+    const refused = new Map();
+    // Lines refused for repeating the posting are reworded by one repair call after the last
+    // pass, not one per pass (each found a handful): the gaps the passes answered since are left out.
+    const copied = [];
+    const answeredAll = new Set();
     for (let pass = 0; after.score < mode.target && pass < mode.gapPasses; pass += 1) {
       try {
-        const filled = await fillTailoringGaps(tailored, form, job, gapOptions(verdicts));
+        const filled = await fillTailoringGaps(tailored, form, job, { ...gapOptions(verdicts), repair: false });
+        copied.push(...(filled.copied || []));
         if (!filled.applied) break;
         tailored = filled;
         applied += filled.applied;
-        verdicts = markAnswered(verdicts, filled.answered, { preferred: mode.preferredGaps });
+        const answered = new Set(filled.answered || []);
+        answered.forEach((id) => answeredAll.add(id));
+        for (const r of filled.rejected || []) if (Number.isInteger(r.id) && !answered.has(r.id)) refused.set(r.id, (refused.get(r.id) || 0) + 1);
+        const spent = [...refused].filter(([, n]) => n >= MAX_GAP_TRIES).map(([id]) => id);
+        verdicts = markAnswered(verdicts, [...answered, ...spent], { preferred: mode.preferredGaps });
+        if (filled.applied < MIN_PASS_LINES) break;
       } catch {
         break; // the attempt so far stands
+      }
+    }
+    if (copied.length) {
+      const { scoring: _scoring, ...options } = gapOptions(verdicts);
+      const repaired = await repairGapLines(tailored, form, job, copied, { ...options, answered: [...answeredAll] });
+      if (repaired.applied) {
+        tailored = repaired;
+        applied += repaired.applied;
       }
     }
     if (applied > 0) {

@@ -33,7 +33,9 @@ export const tailorStyle = (value) => (TAILOR_STYLES.includes(value) || value ==
 export const TAILOR_MODES = {
   ats: {
     target: 95,
-    gapPasses: 4,
+    // Two: a third and fourth pass found little left to answer (2026-10-27 bench), each a call
+    // of ~3,100 tokens in and 300-400 out.
+    gapPasses: 2,
     flatPasses: 1,
     maxAssumedTerms: 12,
     maxTermsPerLine: 3,

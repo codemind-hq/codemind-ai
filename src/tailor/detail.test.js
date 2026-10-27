@@ -130,3 +130,13 @@ test('a short skills list is topped up from the skills the bullets use, a whole 
     { category: 'Infrastructure', items: ['Docker', 'GitHub Actions', 'MLflow'] },
   ], 'Terraform is in no bullet; "ReAct" the agent pattern is not React, and SvelteKit alone is no category');
 });
+
+test('a bullet the model keeps as written comes back as the resume has it, without being retyped', async () => {
+  const { traceBullets, writtenBullets } = await import('./bullets.js');
+  const source = ['Built the billing API on AWS.', 'Ran the data platform for three teams.'];
+  const written = writtenBullets([{ text: '', from: 1, estimate: '' }, { text: 'Built the billing API on AWS with Terraform.', from: 0, estimate: '' }, { text: '', from: 7, estimate: '' }, { text: '', from: null, estimate: '' }]);
+  assert.equal(written.length, 3, 'an empty line with no source is nothing');
+  const { bullets, changes } = traceBullets(source, written, { confirmed: [], protectedKeywords: ['Terraform'], sources: { figures: [], text: source.join('\n') } });
+  assert.deepEqual(bullets, ['Ran the data platform for three teams.', 'Built the billing API on AWS with Terraform.'], "kept in the model's order; a source that does not exist is skipped");
+  assert.deepEqual(changes.map((c) => c.kind), ['rewritten']);
+});

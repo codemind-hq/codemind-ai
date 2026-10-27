@@ -385,7 +385,7 @@ test('a style the client did not send, or one it made up, is the balanced one; e
   assert.equal(tailorStyle('realistic'), 'realistic');
   assert.equal(tailorStyle('generate'), 'generate', 'never picked, but kept when a new resume asks for it');
   assert.deepEqual(Object.values(TAILOR_MODES).map((m) => m.target), [95, 90, 80, 90]);
-  assert.deepEqual(Object.values(TAILOR_MODES).map((m) => m.gapPasses), [4, 3, 2, 3]);
+  assert.deepEqual(Object.values(TAILOR_MODES).map((m) => m.gapPasses), [2, 3, 2, 3]);
   assert.deepEqual(Object.values(TAILOR_MODES).map((m) => m.maxAssumedTerms), [12, 8, 4, 10]);
   assert.equal(TAILOR_MODES.generate.forceAssumed, false, 'a new resume writes in only what the field makes plausible');
   assert.equal(tailorMode('nonsense'), TAILOR_MODES.balanced);
