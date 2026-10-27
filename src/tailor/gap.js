@@ -14,7 +14,7 @@ import { tailoringSources } from './form.js';
 import { openRequirements } from './requirements.js';
 import { PLAUSIBLE_BY_STYLE, tailorMode, tailorStyle } from './style.js';
 import { crossesPlatform, gluedTerm, tooManyTerms } from './terms.js';
-import { lower, termsIn } from './text.js';
+import { lower, sameWording, termsIn } from './text.js';
 
 // ── Gap pass ───────────────────────────────────────────────────────────────
 //
@@ -27,6 +27,8 @@ import { lower, termsIn } from './text.js';
 
 /** How long a gap line may run before it is refused; the prompt asks for MAX_BULLET_CHARS. */
 export const MAX_GAP_LINE_CHARS = Math.round(MAX_BULLET_CHARS * 1.2);
+// A line kept beside a dense bullet instead of rewriting it shares less than this of the bullet's words.
+const SPUN_OFF_WORDING = 0.45;
 
 const GAP_SYSTEM_PROMPT =
   "You extend a tailored resume so it meets the requirements it still falls short of. You write in the candidate's own voice about the work their resume describes. Respond with JSON only.";
@@ -235,7 +237,11 @@ export function applyGapLines(tailored, sourceForm, answer, { confirmedKeywords 
       // that adds nothing the job asks for is the bullet said again.
       const roleShows = role.achievements.join('\n');
       const bringsTerm = termsIn(text, [...protectedKeywords, ...assumedKeywords, ...confirmedKeywords]).some((k) => !hasKeyword(roleShows, k));
-      if (denseBullet(before) && !existing && !spunOff.has(before) && bringsTerm) {
+      // Nor when it is the bullet shortened with a term added ("Agent Runtime: Typed ReAct loop from
+      // first principles with 176 harness mechanisms…, plus model-agnostic multi-provider gateways"
+      // shares 0.60 of its words with the bullet; a new angle on it, 0.30).
+      const anotherAngle = sameWording(before, text) < SPUN_OFF_WORDING;
+      if (denseBullet(before) && !existing && !spunOff.has(before) && bringsTerm && anotherAngle) {
         spunOff.add(before);
         spunFrom = before;
         from = null;

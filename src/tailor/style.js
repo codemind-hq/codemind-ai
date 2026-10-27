@@ -22,7 +22,8 @@ export const tailorStyle = (value) => (TAILOR_STYLES.includes(value) || value ==
 
 /**
  * The knobs of each mode. `target` is the score the gap passes stop at and `gapPasses` how many
- * at most, `flatPasses` how many passes that do not raise the score are tolerated before the
+ * at most, `gapAttempts` how many times the gap stage runs from the rewrite with the best kept
+ * (pipeline.js, scoreRounds 'ends'), `flatPasses` how many passes that do not raise the score are tolerated before the
  * passes stop; `maxAssumedTerms`, `maxTermsPerLine` and `maxTermsPerRole` cap what is written in
  * on assumption (terms.js); `maxEstimates` the estimated figures (estimates.js);
  * `newBulletsPerRole` the lines from no source bullet a role may gain (bullets.js);
@@ -37,6 +38,7 @@ export const TAILOR_MODES = {
     // of ~3,100 tokens in and 300-400 out.
     gapPasses: 2,
     flatPasses: 1,
+    gapAttempts: 2,
     maxAssumedTerms: 12,
     maxTermsPerLine: 3,
     maxTermsPerRole: 10,
@@ -50,6 +52,7 @@ export const TAILOR_MODES = {
     target: 90,
     gapPasses: 3,
     flatPasses: 1,
+    gapAttempts: 2,
     maxAssumedTerms: 8,
     maxTermsPerLine: 2,
     maxTermsPerRole: 8,
@@ -63,6 +66,7 @@ export const TAILOR_MODES = {
     target: 80,
     gapPasses: 2,
     flatPasses: 0,
+    gapAttempts: 1,
     maxAssumedTerms: 4,
     maxTermsPerLine: 1,
     maxTermsPerRole: 4,
@@ -76,6 +80,7 @@ export const TAILOR_MODES = {
     target: 90,
     gapPasses: 3,
     flatPasses: 1,
+    gapAttempts: 1,
     maxAssumedTerms: 10,
     maxTermsPerLine: 2,
     maxTermsPerRole: 8,
