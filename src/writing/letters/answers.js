@@ -23,12 +23,13 @@ const FALLBACK_ANSWER_USER_PROMPT = `Answer the APPLICATION QUESTION below. Use 
  * Answer one application question. `context` is the application as it stands (workspace
  * applicationContext): the job, the resume going out, and `pastAnswers` — what the candidate
  * answered to similar questions before, so their facts stay the same from one form to the next.
+ * `serviceTier: 'flex'` for an answer nobody is waiting on (llm/complete.js).
  *
- * @param {{ jobDescription: string, jobTitle?: string, company?: string, optimizedResumeText: string, question: string, prompt?: string, pastAnswers?: object[], model?: string }} input
+ * @param {{ jobDescription: string, jobTitle?: string, company?: string, optimizedResumeText: string, question: string, prompt?: string, pastAnswers?: object[], model?: string, serviceTier?: string }} input
  * @param {import('../../types.js').CallMeta} [meta]
  * @returns {Promise<string>} The answer.
  */
-export async function generateApplicationAnswer({ jobDescription, jobTitle = '', company = '', optimizedResumeText, question, prompt, pastAnswers = [], model }, meta = {}) {
+export async function generateApplicationAnswer({ jobDescription, jobTitle = '', company = '', optimizedResumeText, question, prompt, pastAnswers = [], model, serviceTier }, meta = {}) {
   const past = pastAnswers.map((p) => `Q: ${p.question}\nA: ${p.answer}`).join('\n\n');
   const user = `${pickPrompt(prompt, FALLBACK_ANSWER_USER_PROMPT)}
 
@@ -45,7 +46,7 @@ Write the answer to the APPLICATION QUESTION only.`;
   return writeInVoice({
     write: async (revise) => {
       const { text } = await complete(
-        { ...writerSettings(model), system: FALLBACK_ANSWER_SYSTEM_PROMPT, user: revise ? `${user}\n\n${revise}` : user, temperature: 0.5 },
+        { ...writerSettings(model), system: FALLBACK_ANSWER_SYSTEM_PROMPT, user: revise ? `${user}\n\n${revise}` : user, temperature: 0.5, serviceTier },
         { ...meta, kind: 'answer', promptVersion: `${PROMPT_VERSIONS.answer}${revise ? '+revise' : ''}` }
       );
       return text;

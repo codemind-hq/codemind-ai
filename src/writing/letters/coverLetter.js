@@ -26,14 +26,14 @@ ${PROSE_VOICE_RULES}`;
  * Write the cover letter for an application. Beyond the job and the resume, `context` carries
  * what the rest of the flow learned: `gaps` (requirements the scorer still finds missing),
  * `confirmed` (skills the user confirmed, with what they said) and `companyFacts`. `prompt` is
- * the user's own instructions.
+ * the user's own instructions. `serviceTier: 'flex'` for a letter nobody is waiting on (llm/complete.js).
  *
- * @param {{ jobDescription: string, jobTitle?: string, company?: string, optimizedResumeText: string, prompt?: string, gaps?: string[], confirmed?: { keyword: string, note?: string }[], companyFacts?: string, jobTerms?: string[], jobCountry?: string, model?: string }} input
+ * @param {{ jobDescription: string, jobTitle?: string, company?: string, optimizedResumeText: string, prompt?: string, gaps?: string[], confirmed?: { keyword: string, note?: string }[], companyFacts?: string, jobTerms?: string[], jobCountry?: string, model?: string, serviceTier?: string }} input
  * @param {import('../../types.js').CallMeta} [meta]
  * @returns {Promise<string>} The letter.
  */
 export async function generateCoverLetter(
-  { jobDescription, jobTitle = '', company = '', optimizedResumeText, prompt, gaps = [], confirmed = [], companyFacts = '', jobTerms = [], jobCountry = '', model },
+  { jobDescription, jobTitle = '', company = '', optimizedResumeText, prompt, gaps = [], confirmed = [], companyFacts = '', jobTerms = [], jobCountry = '', model, serviceTier },
   meta = {}
 ) {
   const user = `${COVER_LETTER_INSTRUCTIONS}
@@ -50,7 +50,7 @@ ${sections([
   return writeInVoice({
     write: async (revise) => {
       const { text } = await complete(
-        { ...writerSettings(model), system: COVER_LETTER_SYSTEM_PROMPT, user: revise ? `${user}\n\n${revise}` : user, temperature: 0.6 },
+        { ...writerSettings(model), system: COVER_LETTER_SYSTEM_PROMPT, user: revise ? `${user}\n\n${revise}` : user, temperature: 0.6, serviceTier },
         { ...meta, kind: 'cover_letter', promptVersion: `${PROMPT_VERSIONS.coverLetter}${revise ? '+revise' : ''}` }
       );
       return withoutSubjectLine(text);
