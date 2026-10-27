@@ -8,6 +8,7 @@ import { lower } from './text.js';
 // one pass that follows (service.js), and nothing after it changes the resume (pipeline.js).
 
 const FROM_SOURCE = ['name', 'email', 'phone', 'location', 'linkedin', 'github', 'portfolio', 'education', 'certifications', 'languages'];
+const LINK_SECTION = /\b(?:links?|portfolio|websites?|profiles?)\b/i;
 
 const text = (v) => (typeof v === 'string' ? v : v && typeof v === 'object' && typeof v.text === 'string' ? v.text : '');
 
@@ -36,6 +37,13 @@ export function generatedResumeForm(sourceForm, written, { headline = null } = {
   });
   const form = { ...draft, title: writtenHeadline(headline, source.title) };
   for (const field of FROM_SOURCE) form[field] = source[field];
+  // Links are the source's, never rewritten: a project keeps the link the resume gave it, and a
+  // section of links (Links, Portfolio, Website, Profiles) is the resume's own, whatever the model returned.
+  form.projects = form.projects.map((p) => {
+    const own = source.projects.find((s) => lower(s.name) === lower(p.name));
+    return own ? { ...p, link: own.link } : p;
+  });
+  form.otherSections = [...form.otherSections.filter((o) => !LINK_SECTION.test(o.title)), ...source.otherSections.filter((o) => LINK_SECTION.test(o.title))];
 
   // The source role each new one is about, by employer: what the repair round reads a line against.
   const aligned = form.experience.map((e) => source.experience.find((s) => lower(s.company) === lower(e.company)) || { ...e, achievements: [] });

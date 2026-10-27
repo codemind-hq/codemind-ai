@@ -63,6 +63,445 @@ function section(name, value, maxChars = MAX_CONTEXT_CHARS) {
   return text ? `${name}:\n${fenced(name.toLowerCase(), text, maxChars)}` : '';
 }
 
+/**
+ * Job requirements may inspire SAMPLE experience wording, but are not evidence
+ * that a candidate performed that work. Call this separately for an editable
+ * gap-review UI; never merge these drafts into resume.experience.
+ *
+ * Example output:
+ * { requirement, draftBullet, evidenceQuestion, status:'needs_evidence', exportable:false }
+ */
+const ROLE_REQUIREMENT_EXAMPLES = {
+  servicenow: [
+    ['ServiceNow', 'Developed and maintained a scoped ServiceNow application with custom records, role-based access, and tested configuration changes.', 'Which ServiceNow instance, scoped app, tables, and access rules did you personally develop?'],
+    ['ITSM', 'Configured ServiceNow ITSM incident, change, and request workflows to support operational service delivery.', 'Which ITSM modules and records did you configure, and for which employer or completed project?'],
+    ['HAM modules', 'Implemented hardware asset lifecycle processes in ServiceNow HAM, including asset intake, request routing, and status management.', 'Did you work in the licensed HAM module, or build an independent asset prototype? What records or processes can you demonstrate?'],
+    ['IT Business Management', 'Configured ServiceNow IT Business Management processes, dashboards, and application workflows for business stakeholders.', 'Which ServiceNow ITBM modules, features, and deployment did you work on?'],
+    ['ServiceNow workflows', 'Built Flow Designer workflows to automate service requests, approvals, notifications, and exception handling.', 'What flows and actions did you personally build and test?'],
+    ['ServiceNow business rules', 'Authored server-side JavaScript Business Rules to validate data and automate changes to ServiceNow records.', 'What Business Rules, trigger timing, scripts, and tests can you describe?'],
+    ['ServiceNow release upgrades', 'Coordinated ServiceNow platform upgrade testing, configuration changes, regression validation, and production rollout planning.', 'Which release did you upgrade, what was your responsibility, and what test or deployment evidence exists?'],
+    ['REST web services', 'Integrated ServiceNow with external systems through REST web services using authenticated JSON requests and error handling.', 'Which endpoint did you build or consume, and what was exchanged?'],
+    ['JSON', 'Built JSON-based request and response mappings for ServiceNow integration workflows with external services.', 'Which integration had JSON payloads you implemented or maintained?'],
+    ['XML', 'Configured XML data exchanges or transformations between ServiceNow and external business applications.', 'What XML interface or integration did you personally configure?'],
+    ['JavaScript', 'Developed client-side and server-side JavaScript for ServiceNow form behavior, validation, and automation.', 'Which scripts did you write and how were they tested?'],
+    ['ITIL Foundation', 'Applied ITIL-aligned incident, problem, and change-management practices to service delivery processes.', 'What specific ITIL processes have you used? Do not claim an ITIL certification unless earned.'],
+    ['CMDB', 'Maintained ServiceNow CMDB data quality through record relationships, validation, and reconciliation rules.', 'What CMDB tables, relationships, or reconciliation rules did you maintain?'],
+    ['IntegrationHub', 'Developed ServiceNow IntegrationHub actions and flows to synchronize records across services.', 'Which IntegrationHub spokes or custom actions did you implement?'],
+  ],
+  sre: [
+    ['Kubernetes', 'Operated containerized production workloads on Kubernetes, including rollout diagnostics, service recovery, and resource tuning.', 'Which clusters, workloads, alerts, and production incidents did you own?'],
+    ['Terraform', 'Provisioned and maintained reproducible cloud infrastructure using Terraform modules, state management, and review workflows.', 'Which infrastructure modules did you author and operate?'],
+    ['SLOs', 'Defined SLOs and alerting signals for production services and used incident reviews to improve reliability.', 'Which SLOs and alerts did you implement, and how were they measured?'],
+  ],
+  ai: [
+    ['RAG', 'Built retrieval-augmented generation workflows with embeddings, vector search, and grounded response evaluation.', 'Which corpus, retrieval stack, and evaluation results can you show?'],
+    ['LangGraph', 'Implemented tool-using AI agent workflows with LangGraph, state transitions, and error recovery.', 'What agent workflow, tools, and reliability tests did you implement?'],
+  ],
+  frontend: [
+    ['React', 'Developed accessible React interfaces with typed components, API integration, and automated UI tests.', 'Which product, components, and tests did you implement?'],
+    ['TypeScript', 'Used TypeScript contracts and component patterns to strengthen frontend maintainability and prevent integration defects.', 'What TypeScript project or source evidence supports this?'],
+  ],
+  backend: [
+    ['REST APIs', 'Designed and implemented REST API endpoints, authentication, validation, and reliable database operations.', 'Did you design API servers, or only integrate with external APIs? Name the endpoints.'],
+    ['PostgreSQL', 'Designed PostgreSQL schemas and queries for transactional application workflows and improved query performance.', 'Which schemas and query improvements did you own?'],
+  ],
+  data: [
+    ['ETL', 'Built ETL pipelines with validation, repeatable loads, and operational monitoring.', 'Which source datasets, pipeline technologies, and outcomes can you show?'],
+  ],
+  mobile: [
+    ['SwiftUI', 'Developed SwiftUI features integrated with REST services, state management, and automated iOS tests.', 'Which iOS features did you ship and how were they tested?'],
+  ],
+};
+
+export function getJobRequirementExperienceDrafts(job = {}, candidateProfile = {}, { maxItems = 16 } = {}) {
+  const required = collectJobSkillCandidates(job);
+  const role = jobRoleFamily(job);
+  const templates = ROLE_REQUIREMENT_EXAMPLES[role] ?? [];
+  const byKey = new Map(templates.map(([skill, draftBullet, evidenceQuestion]) =>
+    [skillKey(skill), { draftBullet, evidenceQuestion }]));
+  const candidate = candidateProfile?.resume && typeof candidateProfile.resume === 'object'
+    ? candidateProfile.resume : candidateProfile;
+  const work = (Array.isArray(candidate?.experience) ? candidate.experience : [])
+    .map(workText).join(' ').toLowerCase();
+  const result = [];
+  const seen = new Set();
+  for (const requirement of required) {
+    const key = skillKey(requirement);
+    if (!key || seen.has(key) || /\b(?:certification|certified|degree|csa|cad)\b/i.test(requirement)) continue;
+    seen.add(key);
+    const template = byKey.get(key) ?? byKey.get(key.replace(/^servicenow /, ''));
+    const safe = String(requirement).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const sourceMentionsKeyword = new RegExp(`(^|[^a-z0-9])${safe}(?=$|[^a-z0-9])`, 'i').test(work);
+    result.push({
+      requirement,
+      draftBullet: cleanRequirementDraftText(template?.draftBullet ??
+        `Applied ${requirement} to relevant software systems, integrations, and operational workflows.`),
+      evidenceQuestion: template?.evidenceQuestion ?? `Where and how did you personally use ${requirement}? Provide the system, your actions, and outcome.`,
+      sourceMentionsKeyword, // keyword mention alone is NOT enough to establish a specific bullet
+      status: 'needs_evidence',
+      exportable: false,
+    });
+    if (result.length >= Math.max(1, Math.min(30, Number(maxItems) || 16))) break;
+  }
+  return result;
+}
+
+/**
+ * Review wording stays clean and editable.  "If completed", bracketed
+ * verification reminders, and similar labels belong in UI metadata, NEVER
+ * inside text a candidate might copy or revise.
+ * This does not change the evidence status of a proposed experience claim.
+ */
+export function cleanRequirementDraftText(value) {
+  return String(value ?? '')
+    .replace(/^\s*(?:(?:\[|\()\s*)?(?:if\s+completed|if\s+applicable|unverified|proposed|draft\s+only|candidate\s+review\s+required)(?:\s*(?:\]|\)|:|[-–—]))?\s*/i, '')
+    .replace(/\s*\[(?:insert|specify|list\s+only|identify|verify|candidate\s+to\s+confirm)[^\]]*\]/gi, '')
+    .replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Required certifications are suggestions for the editor, not credentials.
+ * Do not assert a candidate earned a credential merely because a job asks.
+ * For CSA/CAD, display alternatives, not "CSA or CAD" as one earned item.
+ */
+export function getJobRequirementCredentialDrafts(job = {}, candidateProfile = {}) {
+  const title = String(job?.title ?? '');
+  const requirementText = [
+    job?.description, job?.jobDescription, job?.rawDescription, job?.posting,
+    ...(Array.isArray(job?.requiredSkills) ? job.requiredSkills : []),
+    ...(Array.isArray(job?.required_skills) ? job.required_skills : []),
+  ].filter(Boolean).join(' ');
+  const source = candidateProfile?.resume && typeof candidateProfile.resume === 'object'
+    ? candidateProfile.resume : candidateProfile;
+  const certs = (Array.isArray(source?.certifications) ? source.certifications : [])
+    .map(cert => typeof cert === 'string' ? cert : String(cert?.name ?? cert?.title ?? ''));
+  const existing = certs.join(' ');
+  const proposals = [];
+  if (/\bservice\s?now\b/i.test(title) &&
+      /\b(?:certif(?:ied|ication)|\bCSA\b|\bCAD\b)/i.test(requirementText)) {
+    for (const [id, label, pattern] of [
+      ['servicenow-csa', 'ServiceNow Certified System Administrator (CSA)', /\b(?:ServiceNow Certified System Administrator|CSA)\b/i],
+      ['servicenow-cad', 'ServiceNow Certified Application Developer (CAD)', /\b(?:ServiceNow Certified Application Developer|CAD)\b/i],
+    ]) {
+      if (pattern.test(existing)) continue;
+      proposals.push({
+        id: `credential:${id}`,
+        kind: 'credential',
+        text: label,
+        status: 'needs_evidence',
+        source: 'job_requirement',
+        evidenceQuestion: `Have you earned ${label}? If yes, supply the issuer, award date, and credential ID or verification URL.`,
+        editable: true,
+        removable: true,
+        exportable: false,
+      });
+    }
+  }
+  return proposals;
+}
+
+/**
+ * Data model for the review page, with clean, tag-free sample text.
+ * Not a resume JSON: preview suggestions are kept OUTSIDE verifiedResume,
+ * experience[], projects[], and certifications[]. Only explicit, evidenced
+ * candidate updates can enter the ordinary generation/export pipeline.
+ */
+export function buildJobRequirementReviewModel({
+  job = {}, candidateProfile = {}, verifiedResume = null, maxItems = 12,
+  includeCertificationSuggestions = false,
+} = {}) {
+  const drafts = getJobRequirementExperienceDrafts(job, candidateProfile, { maxItems });
+  const experience = drafts.map((draft, index) => ({
+    id: `experience:${index}:${skillKey(draft.requirement)}`,
+    kind: 'experience',
+    text: cleanRequirementDraftText(draft.draftBullet),
+    requirement: draft.requirement,
+    evidenceQuestion: draft.evidenceQuestion,
+    status: 'needs_evidence',
+    source: 'job_requirement',
+    editable: true,
+    removable: true,
+    exportable: false,
+  }));
+  // Credential drafts are opt-in: ordinary resume reviews should not add
+  // unearned certifications merely because a job description requires them.
+  const credentials = includeCertificationSuggestions
+    ? getJobRequirementCredentialDrafts(job, candidateProfile) : [];
+  return {
+    type: 'job_requirement_review',
+    verifiedResume,
+    sections: [
+      { id: 'experience-drafts', title: 'Job-specific experience suggestions', items: experience },
+      { id: 'credential-drafts', title: 'Required certification suggestions', items: credentials },
+    ].filter(section => section.items.length),
+    // This review object is not the finalized resume for an employer.
+    canExportAsResume: false,
+  };
+}
+
+/** Remove a proposed statement in the editor; verified resume is unchanged. */
+export function removeJobRequirementReviewItem(reviewModel, id) {
+  if (!reviewModel || reviewModel.type !== 'job_requirement_review')
+    throw new Error('Expected job requirement review model.');
+  return {
+    ...reviewModel,
+    sections: reviewModel.sections.map(section => ({
+      ...section,
+      items: section.items.filter(item => item.id !== id),
+    })).filter(section => section.items.length),
+  };
+}
+
+/** Edit wording without implicitly approving a statement for export. */
+export function editJobRequirementReviewItem(reviewModel, id, text) {
+  if (!reviewModel || reviewModel.type !== 'job_requirement_review')
+    throw new Error('Expected job requirement review model.');
+  return {
+    ...reviewModel,
+    sections: reviewModel.sections.map(section => ({
+      ...section,
+      items: section.items.map(item => item.id === id
+        ? { ...item, text: cleanRequirementDraftText(text), status: 'needs_evidence', exportable: false }
+        : item),
+    })),
+  };
+}
+
+/** Optional AI drafting for arbitrary jobs. Output goes to a review UI only. */
+export function buildJobRequirementExperienceDraftPrompt({ job = {}, maxItems = 12 } = {}) {
+  const description = compactJobDescription(job?.description ?? job?.jobDescription ?? job?.rawDescription ?? '');
+  const details = {
+    title: job?.title ?? '',
+    requiredSkills: collectJobSkillCandidates(job),
+    description,
+    maxItems: Math.max(1, Math.min(20, Number(maxItems) || 12)),
+  };
+  return {
+    system: 'Draft hypothetical sample experience statements from a job advertisement. These are NOT claims about any real candidate. Return JSON only.',
+    user: `Use this job as a source of hypothetical responsibilities, not evidence of a candidate's work.\n${JSON.stringify(details)}\n` +
+      'Return only {experienceDrafts:[{requirement,draftBullet,evidenceQuestion,status:"needs_evidence",exportable:false}]}. ' +
+      'Use natural, ready-to-edit bullet wording with no inline [If completed], [Unverified], [Candidate review required], or bracketed placeholder tags. ' +
+      'Place needs_evidence/exportable:false ONLY in metadata, not inside draftBullet. ' +
+      'Use specific technology and process names from the actual requirements. Do not invent metrics, employer names, tenure, projects, or credentials. ' +
+      'A candidate must provide their own facts before these can be placed into a real resume.',
+  };
+}
+
+/**
+ * Candidate-provided new work evidence can close a resume gap even if the old
+ * resume omitted it. Require candidate attestation, exact employer/period,
+ * original first-person supporting details, and a nontrivial source note.
+ * This never trusts job-derived draft bullets as evidence automatically.
+ */
+export function collectConfirmedEmployerExperience(candidateProfile = {}, additional = []) {
+  const source = candidateProfile?.resume && typeof candidateProfile.resume === 'object'
+    ? candidateProfile.resume : candidateProfile;
+  const roles = Array.isArray(source?.experience) ? source.experience : [];
+  if (!Array.isArray(additional)) return [];
+  return additional.flatMap((entry) => {
+    if (!entry || entry.candidateAttested !== true) return [];
+    const actualRole = roles.find(role => sameRole(role, entry) &&
+      String(role.period ?? '').trim() === String(entry.period ?? '').trim());
+    if (!actualRole) return [];
+    const evidenceNote = String(entry.evidenceNote ?? entry.sourceDetails ?? '').trim();
+    // Job text or a checked checkbox is not adequate provenance.
+    if (evidenceNote.length < 35) return [];
+    const raw = Array.isArray(entry.achievements) ? entry.achievements :
+      [entry.description ?? entry.work ?? entry.text];
+    const achievements = raw.map(item => typeof item === 'string' ? item : String(item?.text ?? ''))
+      .map(text => text.trim()).filter(text => text.length >= 30).slice(0, 6);
+    if (!achievements.length) return [];
+    return [{ company: actualRole.company, period: actualRole.period, achievements, evidenceNote }];
+  });
+}
+
+function withConfirmedEmployerExperience(candidateProfile, additional) {
+  const accepted = collectConfirmedEmployerExperience(candidateProfile, additional);
+  if (!accepted.length) return candidateProfile;
+  const source = candidateProfile?.resume && typeof candidateProfile.resume === 'object'
+    ? candidateProfile.resume : candidateProfile;
+  const experience = (source?.experience ?? []).map(role => {
+    const additions = accepted.filter(item => sameRole(role, item) &&
+      String(role.period ?? '').trim() === String(item.period ?? '').trim());
+    if (!additions.length) return role;
+    return { ...role, achievements: [
+      ...(Array.isArray(role.achievements) ? role.achievements : []),
+      ...additions.flatMap(item => item.achievements)
+    ] };
+  });
+  const expanded = { ...source, experience };
+  return candidateProfile?.resume && typeof candidateProfile.resume === 'object'
+    ? { ...candidateProfile, resume: expanded } : expanded;
+}
+
+/** Official developer tutorials describe opportunities, not candidate experience. */
+const SERVICENOW_RESEARCH_IDEAS = [
+  {
+    id: 'request-automation', status: 'suggested',
+    name: 'Service Request Workflow Application',
+    objectives: ['Scoped table and form', 'Flow Designer approval workflow',
+      'JavaScript Business Rule', 'Access Control List', 'Automated Test Framework suite'],
+    proof: ['Candidate-owned source repository', 'Flow and business-rule screenshots', 'Test output'],
+    source: 'https://developer.servicenow.com/print_page.do?category=courses&identifier=app_store_learnv2_flowdesigner_zurich_flow_designer&module=course&release=zurich',
+  },
+  {
+    id: 'scripted-rest-integration', status: 'suggested',
+    name: 'Scripted REST API and External Integration',
+    objectives: ['Scripted REST endpoint', 'JSON request validation',
+      'Role-based access', 'Integration and error-path tests'],
+    proof: ['Candidate-owned repository', 'Redacted request/response examples', 'Test runs'],
+    source: 'https://developer.servicenow.com/print_page.do?category=learning-plans&identifier=servicenow_application_developer&module=learning+plan&release=yokohama',
+  },
+  {
+    id: 'asset-request-prototype', status: 'suggested',
+    name: 'Asset Intake and Request Prototype',
+    objectives: ['Asset intake records', 'Request approvals', 'CSV imports', 'ATF tests'],
+    proof: ['Candidate-owned artifacts', 'Import demonstration', 'ATF test output'],
+    caveat: 'An asset-request prototype is not evidence of production HAM-module administration.',
+    source: 'https://developer.servicenow.com/print_page.do?category=learning-module&identifier=ATF_About_zurich%2Cservicenow_application_developer&module=learning+plan&release=zurich',
+  },
+];
+
+/** Recommendations from documentation, NEVER included in a resume by default. */
+export function getResearchBackedProjectIdeas(job = {}) {
+  return /\bservice\s?now\b/i.test(String(job?.title ?? ''))
+    ? SERVICENOW_RESEARCH_IDEAS.map(p => ({ ...p, objectives: [...p.objectives], proof: [...p.proof] }))
+    : [];
+}
+
+/**
+ * Project inclusion requires a candidate attestation AND candidate-specific
+ * artifact. This does not independently verify authorship or quality.
+ * Do not treat research tutorials, a job posting, or an open-source example
+ * someone else wrote as a completed personal project.
+ */
+export function collectCompletedProjectEvidence(candidateProfile = {}, completedProjectEvidence = []) {
+  const profile = candidateProfile?.resume && typeof candidateProfile.resume === 'object'
+    ? candidateProfile.resume : candidateProfile;
+  const entries = [
+    ...(Array.isArray(profile?.projects) ? profile.projects : []),
+    ...(Array.isArray(completedProjectEvidence) ? completedProjectEvidence : []),
+  ];
+  const excluded = /(?:^|\.)(?:developer\.servicenow\.com|servicenow\.com|wikipedia\.org|stackoverflow\.com)$/i;
+  const seen = new Set();
+  return entries.flatMap(item => {
+    if (!item || typeof item !== 'object' || item.status !== 'completed' ||
+        item.candidateAttested !== true) return [];
+    const name = String(item.name ?? item.title ?? '').trim().slice(0, 120);
+    const link = String(item.evidenceUrl ?? item.repositoryUrl ?? item.artifactUrl ?? '').trim();
+    let url;
+    try { url = new URL(link); } catch { return []; }
+    if (!name || url.protocol !== 'https:' || excluded.test(url.hostname)) return [];
+    const bullets = [...(Array.isArray(item.bullets) ? item.bullets : []),
+      ...(Array.isArray(item.achievements) ? item.achievements : [])]
+      .map(v => typeof v === 'string' ? v : String(v?.text ?? ''))
+      .map(v => v.trim().slice(0, 280)).filter(Boolean).slice(0, 5);
+    const description = String(item.description ?? '').trim().slice(0, 420);
+    if (!description && !bullets.length) return [];
+    const technologies = [...new Set((Array.isArray(item.technologies) ? item.technologies :
+      Array.isArray(item.skills) ? item.skills : [])
+      .filter(v => typeof v === 'string').map(v => v.trim().slice(0, 60)).filter(Boolean))]
+      .slice(0, 15);
+    const key = `${name.toLowerCase()}|${url.href}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [{ name, description, bullets, technologies, evidenceUrl: url.href,
+      completedAt: String(item.completedAt ?? '').slice(0, 30) }];
+  });
+}
+
+/**
+ * Platform and qualification claims need evidence outside the job posting.
+ * A project can establish project-level familiarity, not an employment tenure
+ * or official ServiceNow certification.
+ */
+const SERVICE_NOW_SPECIFIC_CLAIMS = [
+  /\bservice\s?now\b/i, /\bitsm\b/i, /\bitbm\b/i, /\bham modules?\b/i,
+  /\bgliderecord\b/i, /\bglideajax\b/i, /\bintegrationhub\b/i,
+  /\bflow designer\b/i, /\bscript includes?\b/i,
+  /\bcmdb\b/i, /\bservice catalog\b/i,
+];
+
+function sanitizeSpecialtyClaims(resumeResult, candidateProfile, completedProjects, job = {}) {
+  if (!/\bservice\s?now\b/i.test(String(job?.title ?? ''))) return resumeResult;
+  const profile = candidateProfile?.resume && typeof candidateProfile.resume === 'object'
+    ? candidateProfile.resume : candidateProfile;
+  const roles = Array.isArray(profile?.experience) ? profile.experience : [];
+  const employmentEvidence = roles.map(workText).join(' ');
+  const personalEvidence = `${employmentEvidence} ${JSON.stringify(completedProjects)}`;
+  const certificates = JSON.stringify(profile?.certifications ?? []);
+  const hasProfessionalSN = /\bservice\s?now\b/i.test(employmentEvidence);
+  const isUnsupported = sentence => {
+    if (/\b(?:certified|certification|credential|\bCSA\b|\bCAD\b)\b/i.test(sentence) &&
+        /\bservice\s?now\b|\bCSA\b|\bCAD\b/i.test(sentence) &&
+        !/\bservice\s?now\b|\bCSA\b|\bCAD\b/i.test(certificates)) return true;
+    if (!hasProfessionalSN && /\b(?:\d+\+?\s*(?:years?|yrs?)|enterprise.wide|production deployments?)\b/i.test(sentence) &&
+        /\bservice\s?now\b/i.test(sentence)) return true;
+    return SERVICE_NOW_SPECIFIC_CLAIMS.some(pattern => {
+      pattern.lastIndex = 0;
+      return pattern.test(sentence) && !pattern.test(personalEvidence);
+    });
+  };
+  const clean = (value, fallback) => {
+    const text = String(value ?? '').trim();
+    const sentences = text.split(/(?<=[.!?])\s+/).filter(s => !isUnsupported(s));
+    return sentences.join(' ').trim() || fallback;
+  };
+  const update = resume => {
+    if (!resume || typeof resume !== 'object') return resume;
+    const result = { ...resume };
+    result.summary = clean(result.summary, 'Software engineer with experience in business applications, API integrations, and software delivery.');
+    if (Array.isArray(result.achievements)) result.achievements = result.achievements
+      .filter(a => !isUnsupported(typeof a === 'string' ? a : String(a?.text ?? '')));
+    if (Array.isArray(result.otherSections)) result.otherSections = result.otherSections
+      .filter(item => !isUnsupported(JSON.stringify(item)));
+    if (isUnsupported(String(result.title ?? ''))) {
+      result.title = hasProfessionalSN ? 'Application Development Engineer' :
+        completedProjects.some(p => /\bservice\s?now\b/i.test(JSON.stringify(p)))
+          ? 'Application Development Engineer | ServiceNow Project Work'
+          : 'Application Development Engineer | API Integration';
+    }
+    if (result.headline && isUnsupported([result.headline.role,
+      ...(result.headline.specialties ?? [])].join(' '))) {
+      result.headline = { role: 'Application Development Engineer',
+        specialties: completedProjects.some(p => /\bservice\s?now\b/i.test(JSON.stringify(p)))
+          ? ['ServiceNow Independent Project', 'API Integration'] : ['API Integration'] };
+    }
+    return result;
+  };
+  if (resumeResult?.resume && typeof resumeResult.resume === 'object') {
+    const resume = update(resumeResult.resume);
+    const result = { ...resumeResult, resume };
+    if ('title' in result) result.title = resume.title;
+    if ('summary' in result) result.summary = resume.summary;
+    // Some renderers read headline rather than resume.title.
+    if (isUnsupported([result.headline?.role, ...(result.headline?.specialties ?? [])].join(' '))) {
+      result.headline = { role: 'Application Development Engineer',
+        specialties: completedProjects.some(p => /\bservice\s?now\b/i.test(JSON.stringify(p)))
+          ? ['ServiceNow Independent Project', 'API Integration'] : ['API Integration'] };
+    }
+    return result;
+  }
+  return update(resumeResult);
+}
+
+function attachCompletedProjects(resumeResult, completedProjects) {
+  const projects = completedProjects.map(project => ({
+    name: project.name,
+    type: 'Independent Project',
+    description: project.description,
+    technologies: [...project.technologies],
+    achievements: project.bullets.map(text => ({ text, estimate: '' })),
+    ...(project.completedAt ? { period: project.completedAt } : {}),
+    url: project.evidenceUrl,
+  }));
+  if (resumeResult?.resume && typeof resumeResult.resume === 'object') {
+    return { ...resumeResult, projects,
+      resume: { ...resumeResult.resume, projects } };
+  }
+  return { ...resumeResult, projects };
+}
+
 // The final resume renderer gets contact data directly from the candidate form.
 function withoutContactDetails(profile) {
   if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
@@ -85,28 +524,99 @@ function withoutContactDetails(profile) {
  * transmitted. A job requirement is NEVER used as evidence of prior work.
  * The compact signals include factual systems so new bullets can be specific and defensible.
  */
-function workText(entry) {
-  const fields = [entry?.achievements, entry?.bullets, entry?.responsibilities,
-    entry?.workHighlights, entry?.workNotes, entry?.jobDuties];
-  return fields.flatMap(value => Array.isArray(value) ? value : typeof value === 'string' ? [value] : [])
-    .map(value => typeof value === 'string' ? value : String(value?.text ?? value?.description ?? ''))
-    .join(' ');
+/** Keep role evidence separated by source bullet to prevent matches bridging
+ * unrelated sentences. Only candidate work notes are scanned; the job never is. */
+function workSegments(entry) {
+  if (!entry || typeof entry !== 'object') return [];
+  const fields = [entry.achievements, entry.bullets, entry.responsibilities,
+    entry.workHighlights, entry.workNotes, entry.jobDuties];
+  const segments = fields.flatMap(value => Array.isArray(value) ? value :
+    typeof value === 'string' ? [value] : [])
+    .map(value => typeof value === 'string' ? value :
+      String(value?.text ?? value?.description ?? ''))
+    .flatMap(text => text.split(/\r?\n+/))
+    .map(text => text.trim())
+    .filter(Boolean)
+    // A negative capability statement is not evidence of a skill. Prefer
+    // omitting ambiguous text over turning "no ServiceNow experience" into work.
+    .filter(text => !/\b(?:no|never|without|lack(?:s|ing)?|not worked with|no hands.on)\b.{0,60}\b(?:experience|skills?|servicenow|salesforce|kubernetes|aws|azure|react|java|python)\b/i.test(text));
+  return [...new Set(segments)];
 }
+
+function workText(entry) {
+  return workSegments(entry).join(' ');
+}
+
+// Rank only *already matched* candidate facts. Job terms influence order,
+// not whether an activity, system, or tool is treated as candidate evidence.
+function rankDetectedEvidence(rows, job = {}) {
+  const title = String(job?.title ?? '').toLowerCase();
+  const required = [job?.requiredSkills, job?.skills].flat()
+    .filter(value => typeof value === 'string').join(' ').toLowerCase();
+  const posting = String(job?.description ?? job?.jobDescription ?? '').toLowerCase().slice(0, 4200);
+  const ignore = new Set(['and', 'with', 'the', 'for', 'from', 'development', 'engineering',
+    'software', 'work', 'application', 'applications', 'systems', 'management',
+    'technical', 'developer', 'engineer', 'using', 'data']);
+  const tokens = text => [...new Set((String(text).toLowerCase().match(/[a-z0-9+#.]+/g) ?? [])
+    .filter(term => term.length > 2 && !ignore.has(term)))];
+  const titleTerms = new Set(tokens(title));
+  const requiredTerms = new Set(tokens(required));
+  const postingTerms = new Set(tokens(posting));
+  return rows.map((row, i) => {
+    const labelTerms = tokens(row);
+    const relevance = labelTerms.reduce((sum, term) => sum +
+      (titleTerms.has(term) ? 5 : requiredTerms.has(term) ? 3 : postingTerms.has(term) ? 1 : 0), 0);
+    return { row, relevance, i };
+  }).sort((a, b) => b.relevance - a.relevance || a.i - b.i).map(({ row }) => row);
+}
+
 function condensedCareerFacts(entry, job) {
-  const text = workText(entry);
-  if (!text.trim()) return undefined;
-  const activities = CAREER_FACT_PATTERNS
-    .filter(([name, pattern]) => pattern.test(text) &&
-      !(enterpriseRole(job) && name === 'Native Apple application development'))
-    .map(([name]) => name).slice(0, 11);
-  const technologies = CAREER_TECH_PATTERNS
-    .filter(([skill, pattern]) => pattern.test(text) && isRelevantToTargetSkill(skill, job))
-    .map(([skill]) => skill).slice(0, 12);
-  const systems = CAREER_SYSTEM_PATTERNS
-    .filter(([, pattern]) => pattern.test(text))
-    .map(([name]) => name).slice(0, 8);
+  const segments = workSegments(entry);
+  if (!segments.length) return undefined;
+  const match = (patterns, limit, predicate = () => true) => rankDetectedEvidence(
+    patterns.filter(([label, regex]) => predicate(label) &&
+      segments.some(segment => { regex.lastIndex = 0; return regex.test(segment); }))
+      .map(([label]) => label), job).slice(0, limit);
+  const activities = match(CAREER_FACT_PATTERNS, 16, name =>
+    !(enterpriseRole(job) && /^(?:Native Apple|Native Android|Cross-platform mobile|Mobile (?:background|offline|release|testing|performance))/i.test(name)));
+  const technologies = match(CAREER_TECH_PATTERNS, 20, name => isRelevantToTargetSkill(name, job));
+  const systems = match(CAREER_SYSTEM_PATTERNS, 10);
+  const workUnits = careerWorkUnits(entry, job);
   return activities.length || technologies.length || systems.length
-    ? { activities, technologies, systems } : undefined;
+    ? { activities, technologies, systems, workUnits } : undefined;
+}
+
+/** Per-source-statement fact clusters. This preserves the link between a
+ * technology and an action without sending the source bullet to the LLM.
+ * It prevents combining "used ServiceNow elsewhere" in one bullet with
+ * "wrote business rules for another system" in a second bullet. */
+function careerWorkUnits(entry, job = {}, maxUnits = 7) {
+  const match = (patterns, segment, max, predicate = () => true) =>
+    rankDetectedEvidence(patterns.filter(([name, regex]) => {
+      regex.lastIndex = 0;
+      return predicate(name) && regex.test(segment);
+    }).map(([name]) => name), job).slice(0, max);
+  const units = workSegments(entry).map(segment => {
+    const activities = match(CAREER_FACT_PATTERNS, segment, 3, name =>
+      !(enterpriseRole(job) && /^(?:Native Apple|Native Android|Cross-platform mobile|Mobile (?:background|offline|release|testing|performance))/i.test(name)));
+    const systems = match(CAREER_SYSTEM_PATTERNS, segment, 2);
+    const technologies = match(CAREER_TECH_PATTERNS, segment, 4, name => isRelevantToTargetSkill(name, job));
+    // Distinguish API implementation from client/API integration. Merely
+    // consuming an API is not proof the candidate designed the API server.
+    const apiAction = /\b(?:built|developed|designed|implemented|maintained)\b.{0,90}\b(?:rest(?:ful)?\s*(?:api|web service)|backend api)/i.test(segment)
+      ? 'api_implementation'
+      : /\b(?:integrated|consumed|connected|api contracts?|backend apis?)\b/i.test(segment)
+        ? 'api_integration' : undefined;
+    return { activities, systems, technologies, ...(apiAction ? { apiAction } : {}) };
+  }).filter(unit => unit.activities.length || unit.systems.length || unit.technologies.length);
+  const titleTerms = (String(job?.title ?? '') + ' ' + collectJobSkillCandidates(job).slice(0, 12).join(' ')).toLowerCase();
+  const score = unit => [...unit.activities, ...unit.systems, ...unit.technologies].reduce(
+    (sum, term) => sum + (titleTerms.includes(String(term).toLowerCase()) ? 3 : 0),
+    unit.activities.length + unit.technologies.length, 
+  );
+  return units.map((unit, index) => ({ unit, score: score(unit), index }))
+    .sort((a,b) => b.score - a.score || a.index - b.index)
+    .slice(0, maxUnits).map(({unit}) => unit);
 }
 
 /** Additional professional methods are derived from factual work patterns,
@@ -125,6 +635,35 @@ const METHODS_BY_CAREER_FACT = {
   'Production analytics and monitoring': ['Production Monitoring'],
   'Business application development': ['Enterprise Applications'],
   'Identity and authentication integration': ['Authentication Integration'],
+  'API contracts or documentation': ['API Contracts'],
+  'Service resilience and fault tolerance': ['Failure Recovery'],
+  'Caching and data access optimization': ['Caching'],
+  'Technical documentation': ['Technical Documentation'],
+  'Cross-team API coordination': ['API Contracts', 'Systems Integration'],
+  'Code review and engineering standards': ['Code Review'],
+  'GraphQL API development': ['GraphQL'],
+  'Microservices architecture': ['Microservices'],
+  'Web accessibility implementation': ['Accessibility'],
+  'Data visualization and dashboards': ['Data Visualization'],
+  'Web performance optimization': ['Web Performance'],
+  'Database query optimization': ['SQL Optimization'],
+  'Data modeling and database design': ['Data Modeling'],
+  'Authentication and authorization': ['Authentication', 'Authorization'],
+  'Incident response and postmortems': ['Incident Response'],
+  'Infrastructure as code': ['Infrastructure as Code'],
+  'Infrastructure provisioning and deployment': ['Infrastructure Provisioning'],
+  'Observability and telemetry': ['Observability'],
+  'Cloud service development': ['Cloud Computing'],
+  'API security': ['API Security'],
+  'Application security': ['Application Security'],
+  'ETL and ELT pipeline development': ['ETL'],
+  'Data warehouse development': ['Data Warehousing'],
+  'Machine learning model training': ['Model Training'],
+  'Machine learning evaluation': ['Model Evaluation'],
+  'ServiceNow Scripted REST API development': ['REST APIs', 'API Integration'],
+  'ServiceNow access control development': ['Access Control Lists (ACLs)'],
+  'ServiceNow automated test framework development': ['Automated Test Framework (ATF)'],
+  'ServiceNow scoped application development': ['ServiceNow', 'Application Development'],
 };
 function collectSupportedEngineeringMethods(profile = {}, job = {}) {
   const source = profile?.resume && !Array.isArray(profile.resume) ? profile.resume : profile;
@@ -430,7 +969,7 @@ function factualBulletFallback(originalRole, job, limit = 5) {
       systems.has('ServiceNow ITSM or HAM administration'),
     'Supported ServiceNow platform administration and documented ITSM or asset-management processes.');
   add(systems.has('Branded calling and caller identity') && activity.has('REST API development and integration'),
-    'Integrated caller-identity and branded-calling workflows with backend APIs, supporting telecom identity and reputation services.');
+    'Integrated caller-identity and branded-calling services through backend API interfaces for telecom identity workflows.');
   add(activity.has('Cross-team API coordination') && systems.has('Backend authentication and API integrations'),
     'Coordinated API contracts with backend and data engineers, troubleshooting integration inconsistencies between application clients and telecom services.');
   add(systems.has('API synchronization, retries and recovery'),
@@ -525,8 +1064,25 @@ function applyCompanyOnlyGeneratedContent(assembledResume, generatedResult, cand
       if (enterpriseRole(job) && /\b(?:ios|macos|apple platform|app store|testflight|swiftui|uikit|xctest|xcuittest|core ml)\b/i.test(text)) return false;
       // Create Resume writes from scratch: never repeat a source bullet verbatim.
       if (originalTexts.has(text.trim())) return false;
+      // Block ANY named technology/platform not present in this employer's
+      // work evidence. This scales with careerPatterns.js rather than an
+      // incomplete hard-coded ServiceNow/AWS/Java keyword blacklist.
+      const claimedTools = CAREER_TECH_PATTERNS
+        .filter(([, regex]) => { regex.lastIndex = 0; return regex.test(text); });
+      const missingTool = claimedTools.some(([, regex]) => {
+        regex.lastIndex = 0;
+        return !regex.test(evidence);
+      });
+      if (missingTool) return false;
+      // "Integrated with backend APIs" must not become "built REST APIs".
+      const claimsApiImplementation = /\b(?:built|developed|implemented|designed)\b.{0,65}\b(?:rest(?:ful)?\s*apis?|backend apis?|web services?)\b/i.test(text);
+      if (claimsApiImplementation) {
+        const implementationEvidence = /\b(?:built|developed|implemented|designed)\b.{0,90}\b(?:rest(?:ful)?\s*apis?|backend apis?|web services?)\b/i.test(evidence);
+        if (!implementationEvidence) return false;
+      }
+      // Cover product/module names that do not have standalone catalog entries.
       const tokens = [...text.matchAll(platformClaims)].map(match => match[0]);
-      return tokens.every(token => new RegExp(`\\b${token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(evidence));
+      return tokens.every(token => evidence.toLowerCase().includes(token.toLowerCase()));
     };
     const safeTitle = String(role.title).replace(/^proposed\s+(?:(?:display )?title\s*:\s*)?/i, '').trim();
     const next = withDisplayTitle(original,
@@ -570,7 +1126,7 @@ function applyCompanyOnlyGeneratedContent(assembledResume, generatedResult, cand
   const normalized = normalizeGeneratedSkillGroups({
     skills: draft.skills,
     skillGroups: draft.skillGroups,
-  });
+  }, job);
   const fresh = {
     ...sourceResume,
     summary: freshSummary,
@@ -620,7 +1176,7 @@ function applyCompanyOnlyGeneratedContent(assembledResume, generatedResult, cand
  */
 export function finalizeGeneratedResume(
   assembledResume, generatedResult, candidateProfile, job = {},
-  { approvedSkills = [], confirmedAdditionalExperience = [], requireConfirmedSkills = true, expandJobSkills = true, jobSkillDraftMode = false, targetSkillCount = 28, companyInfoOnly = true, approvedExperience = [] } = {}
+  { approvedSkills = [], confirmedAdditionalExperience = [], requireConfirmedSkills = true, expandJobSkills = true, jobSkillDraftMode = false, targetSkillCount = 28, companyInfoOnly = true, approvedExperience = [], completedProjectEvidence = [] } = {}
 ) {
   if (companyInfoOnly) {
     if (!String((generatedResult?.resume ?? generatedResult)?.summary ?? '').trim()) {
@@ -632,17 +1188,25 @@ export function finalizeGeneratedResume(
       generatedResult = acceptConfirmedCompanyExperience(generatedResult, approvedExperience);
     }
   }
+  const effectiveCandidate = withConfirmedEmployerExperience(candidateProfile, confirmedAdditionalExperience);
+  const completedProjects = collectCompletedProjectEvidence(effectiveCandidate, completedProjectEvidence);
+  // Completed independent projects support project-level skills only.
+  const sourceForSkills = { ...effectiveCandidate, completedProjects };
   const prepared = expandJobSkills
-    ? expandGeneratedJobSkills(generatedResult, candidateProfile, job, { jobSkillDraftMode, targetSkillCount })
+    ? expandGeneratedJobSkills(generatedResult, sourceForSkills, job, { jobSkillDraftMode, targetSkillCount })
     : generatedResult;
   const regenerated = companyInfoOnly
-    ? applyCompanyOnlyGeneratedContent(assembledResume, prepared, candidateProfile, job)
+    ? applyCompanyOnlyGeneratedContent(assembledResume, prepared, effectiveCandidate, job)
     : applyGeneratedResumeSections(
-        assembledResume, prepared, candidateProfile, job, confirmedAdditionalExperience
+        assembledResume, prepared, effectiveCandidate, job, confirmedAdditionalExperience
       );
-  const cleaned = filterResumeLinksForJob(regenerated, job);
+  // Never trust LLM-authored project entries. Replace them with exact candidate
+  // evidence or [] before export; source projects must meet the same conditions.
+  const projectsAttached = attachCompletedProjects(regenerated, completedProjects);
+  const claimsChecked = sanitizeSpecialtyClaims(projectsAttached, effectiveCandidate, completedProjects, job);
+  const cleaned = filterResumeLinksForJob(claimsChecked, job);
   return requireConfirmedSkills
-    ? retainConfirmedSkillsForExport(cleaned, candidateProfile, approvedSkills, job)
+    ? retainConfirmedSkillsForExport(cleaned, sourceForSkills, approvedSkills, job)
     : cleaned;
 }
 
@@ -862,6 +1426,8 @@ function skillKey(value) {
     'information technology service management': 'itsm',
     'atf': 'automated test framework atf',
     'ci cd pipelines': 'ci cd',
+    'systems integration': 'system integration',
+    'github actions': 'github actions',
   };
   return aliases[raw] ?? raw;
 }
@@ -870,7 +1436,7 @@ function skillKey(value) {
 function isRelevantToTargetSkill(skill, job) {
   const role = jobRoleFamily(job);
   if (role === 'servicenow') {
-    return !/\b(swiftui|uikit|swift|objective c|core ml|storekit|avfoundation|xcode|testflight|app store connect|ios|macos|android sdk|flutter|react native|metal|combine|xctest|xcuitest|ffmpeg|speech.to.text|text.to.speech|ocr|media processing|realm|icloud|keychain)\b/i.test(skill);
+    return !/\b(swiftui|uikit|swift|objective[ -]?c|core ml|core data|storekit|avfoundation|xcode|testflight|app store|ios|macos|android|kotlin|flutter|react native|metal|combine|xctest|xcuitest|ffmpeg|speech.to.text|text.to.speech|ocr|media processing|realm|icloud|keychain|mvvm|viper|async.await|\bgcd\b|firebase|push notifications?|apple pay|stripe|fastlane|app store connect|a\/b testing|crash analytics|crash monitoring)\b/i.test(skill);
   }
   if (role === 'mobile') {
     return !/\b(servicenow|gliderecord|glideajax|itsm|itbm|ham modules|cmdb|integrationhub)\b/i.test(skill);
@@ -969,7 +1535,7 @@ export function expandGeneratedJobSkills(
   const result = [];
   const seen = new Set();
   const add = (skill, factDerived = false) => {
-    const text = String(skill ?? '').trim();
+    const text = String(skill ?? '').trim().replace(/^github actions-$/i, 'GitHub Actions');
     const key = skillKey(text);
     if (!text || !key || seen.has(key) || result.length >= cap || !isRelevantToTargetSkill(text, job)) return;
     if (/\b(?:certification|certified|degree|foundation certified)\b/i.test(text) || /^ITIL Foundation$/i.test(text)) return;
@@ -982,25 +1548,41 @@ export function expandGeneratedJobSkills(
   // and are NEVER added to the model prompt.
   for (const skill of explicit) add(skill);
   for (const skill of previous) add(skill);
-  if (!jobSkillDraftMode && jobRoleFamily(job) === 'servicenow') {
-    const transfer = new Set([
-      'REST APIs', 'GraphQL', 'JSON', 'JavaScript', 'XML', 'C#', 'SQL',
-      'Microsoft SQL Server', '.NET', 'Python', 'GitHub Actions',
-      'Release Automation', 'Performance Profiling', 'Crash Analytics',
-      'Crash Monitoring', 'CI/CD', 'MVC', 'Design Patterns', 'Clean Architecture',
-    ]);
-    const skillsAtSource = [
-      ...(Array.isArray(candidateProfile?.skills) ? candidateProfile.skills : []),
-      ...(Array.isArray(candidateProfile?.skillGroups) ? candidateProfile.skillGroups.flatMap(skillGroupEntries) : []),
-    ];
-    for (const value of skillsAtSource) {
-      const skill = asSkill(value);
-      if (transfer.has(skill)) add(skill);
+  if (!jobSkillDraftMode) {
+    // The model sees compact work facts, not the candidate's old skills list.
+    // Locally, however, explicitly listed source skills and technologies
+    // detected in work history are valid evidence for the skills section.
+    // Apply job relevance filtering and an upper bound; never insert a
+    // job-only requirement as a proven candidate skill.
+    const sourceProfile = candidateProfile?.resume && !Array.isArray(candidateProfile.resume)
+      ? candidateProfile.resume : candidateProfile;
+    const allRoles = Array.isArray(sourceProfile?.experience) ? sourceProfile.experience : [];
+    const roleFacts = allRoles.map(role => condensedCareerFacts(role, job)).filter(Boolean);
+    const sourceSkills = [
+      ...(Array.isArray(sourceProfile?.skills) ? sourceProfile.skills : []),
+      ...(Array.isArray(sourceProfile?.skillGroups) ? sourceProfile.skillGroups.flatMap(skillGroupEntries) : []),
+      ...roleFacts.flatMap(fact => fact.technologies),
+      ...(Array.isArray(candidateProfile?.completedProjects) ? candidateProfile.completedProjects.flatMap(p => p.technologies ?? []) : []),
+    ].map(asSkill).filter(Boolean);
+    const sourceKeys = new Set(sourceSkills.map(skillKey));
+    const allowed = (skill) => sourceKeys.has(skillKey(skill)) || mentioned(skill);
+    // First add required and preferred skills with actual local evidence.
+    for (const skill of explicit) {
+      if (allowed(skill)) add(skill, true);
     }
-    // Derived work methods support skills without inventing new technologies.
+    // Next add relevant candidate skills, retaining those present in the
+    // job description or closest to a documented work responsibility first.
+    const demand = `${job?.title ?? ''} ${explicit.join(' ')}`.toLowerCase();
+    const weighted = sourceSkills.map((skill, index) => ({skill, index,
+      weight: demand.includes(skill.toLowerCase()) ? 5 :
+        /(api|integration|database|sql|\.net|c#|release|monitoring|testing|automation|ci\/cd|authentication)/i.test(skill) ? 2 : 0,
+    })).sort((a,b) => b.weight - a.weight || a.index - b.index);
+    // Turn evidenced work activities into transferable ATS-friendly methods.
+    // Methods go before secondary unrelated tools when the role changes fields.
     for (const method of collectSupportedEngineeringMethods(candidateProfile, job)) {
       add(method, true);
     }
+    for (const {skill} of weighted) add(skill, true);
   }
   // Expand only in preview draft mode, and never pad with a generic unrelated list.
   if (jobSkillDraftMode && jobRoleFamily(job)) {
@@ -1377,6 +1959,46 @@ export function getJobGapReview(job = {}, candidateProfile = {}, approvedSkills 
   };
 }
 
+/** ATS keyword coverage audit for the SAVED, finalized resume.
+ * This is a literal/normalized coverage diagnostic, NOT a prediction of an
+ * employer ATS score. Missing terms are left missing, never inserted as
+ * fictional experience. Use it to see which requirements have real evidence. */
+export function getGeneratedAtsCoverage(resumeResult, job = {}) {
+  const resume = resumeResult?.resume ?? resumeResult ?? {};
+  const required = Array.isArray(job?.requiredSkills) && job.requiredSkills.length
+    ? job.requiredSkills : Array.isArray(job?.required_skills) && job.required_skills.length
+      ? job.required_skills : collectJobSkillCandidates(job);
+  const wanted = [...new Map(required
+    .filter(value => typeof value === 'string')
+    .map(skill => [skillKey(skill), skill])).values()];
+  const actualSkills = [
+    ...(Array.isArray(resume?.skills) ? resume.skills : []),
+    ...(Array.isArray(resume?.skillGroups) ? resume.skillGroups.flatMap(skillGroupEntries) : []),
+  ].map(value => typeof value === 'string' ? value : String(value?.name ?? value?.skill ?? ''));
+  const actualText = [resume?.summary, resume?.title,
+    ...(Array.isArray(resume?.projects) ? resume.projects.map(p => JSON.stringify(p)) : []),
+    ...(Array.isArray(resume?.experience) ? resume.experience.flatMap(role =>
+      Array.isArray(role?.achievements) ? role.achievements.map(a => typeof a === 'string' ? a : a?.text) : []) : []),
+  ].filter(Boolean).join(' ').toLowerCase();
+  const seen = new Set(actualSkills.map(skillKey));
+  const covered = [];
+  const missing = [];
+  for (const skill of wanted) {
+    const key = skillKey(skill);
+    const synonyms = key === 'rest apis' ? ['rest apis', 'rest web services', 'restful apis']
+      : key === 'ci cd' ? ['ci/cd', 'continuous integration', 'continuous delivery']
+      : key === 'itsm' ? ['itsm', 'it service management']
+      : [skill.toLowerCase()];
+    const found = seen.has(key) || synonyms.some(term => {
+      const safe = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return new RegExp(`(^|[^a-z0-9])${safe}(?=$|[^a-z0-9])`, 'i').test(actualText);
+    });
+    (found ? covered : missing).push(skill);
+  }
+  return { covered, missing, total: wanted.length,
+    keywordCoveragePct: wanted.length ? Math.round(100 * covered.length / wanted.length) : null };
+}
+
 // Short stable instruction prefix. It is identical for jobs in the same mode,
 // which makes provider prefix caching possible when supported.
 const GENERATE_RULES = `CREATE RESUME FROM BLANK STATE; RESPOND WITH JSON ONLY.
@@ -1408,15 +2030,33 @@ job-relevant achievements; otherwise achievements:[]. For enterprise jobs
 omit unrelated mobile app launch/install-count achievements and portfolio links.
 Do not repeat the same accomplishment in summary, bullets and achievements.
 
+ATS ALIGNMENT: Work from job requirements backward to the best-supported
+workUnits. Put matching terms and concrete evidence in the summary, skills,
+and most relevant bullet of the correct company; do not claim a missing required
+technology, platform, certification, or duty. Required-but-unsupported items
+remain gaps and must not appear as employment claims. Never pad with vague terms.
+
 SKILLS: Prioritize required then preferred job skills. Output technical
 categories in skillGroups [{name,skills}] and skills:[]. Categories represent
 technical disciplines, never verification status. NEVER return {category, items}.
 For ServiceNow e.g. ServiceNow Platform & Development, IT Service Management,
 Scripting & Integrations, Platform Administration & Quality. Do not output
-categories called Draft Skills, Unverified or Missing Skills. Remove unrelated technologies. Return 8-15 supported high-value distinct skills;
+categories called Draft Skills, Unverified or Missing Skills. Remove unrelated technologies. Return up to 18 supported, job-relevant, distinct skills;
 The application can add job-specific options internally, but output only
 skills supported by the candidate's factual activity/technology signals. Do not treat a
 job-only skill as verified or assert use of it in summary or experience.
+
+ADDITIONAL CANDIDATE EVIDENCE: CANDIDATE_ATTESTED_ADDITIONAL_WORK, when present,
+contains the candidate's own extra documented responsibilities, matched to
+the original employer and period (not independently verified). It may support skills and experience for that employer.
+Do not confuse these facts with job requirement experience drafts or transfer
+them to a different employer. Never infer a platform from the JOB_DESCRIPTION.
+
+PROJECT PROVENANCE: COMPLETED_INDEPENDENT_PROJECTS contains candidate-attested,
+artifact-referenced work. Include these projects ONLY under Projects, never
+under a company or as years of professional experience. Research suggestions
+are NOT candidate facts; do not use them as completed achievements. Do not
+claim a CSA/CAD certification unless the fixed certification source shows it.
 
 OTHER: Include only verified relevant projects; remove irrelevant portfolio
 links. Education, languages, certifications and contacts are copied by app.
@@ -1428,11 +2068,18 @@ function generateInstructions({ allowEstimates, refocus, jobSkillDraftMode, hasL
   const mode = companyInfoOnly
     ? `MODE: COMPANY_ONLY_WITH_FACT_DIGEST. CANDIDATE_COMPANIES sends company
 metadata and compact careerFacts derived from actual work descriptions.
-Old bullets, original titles, original summaries and original skill inventories
-are NOT included. Generate 2-5 concrete, job-relevant achievement bullets from
-careerFacts.activities, careerFacts.technologies and careerFacts.systems for each role.
-Each bullet should mention a supported system, feature or process from systems
-when available, plus the actual action and its technology or operational result.
+Old bullets, original titles, summaries and skills inventories are NOT included.
+For each company, careerFacts.workUnits groups technologies, actual tasks and
+systems detected in the SAME source work item; never combine separate workUnits
+to claim a new platform integration or duty. Generate 3-5 concrete, relevant
+bullets from those workUnits, prioritizing required job responsibilities with
+real candidate evidence. Use exact job terminology only where equivalent to the
+fact; for example, call REST API integration REST web services if the work used
+REST services. A client/API integration is NOT API server development. Include
+specific systems and actions rather than generic keyword lists.
+When COMPLETED_INDEPENDENT_PROJECTS is present, distinguish independently
+completed project work from professional experience. NEVER transfer any
+project-only ServiceNow tool to an employer's experience bullets.
 For a ServiceNow job, lead with verified API integrations, workflow automation,
 production issue handling, release coordination and data management. Do NOT
 claim ServiceNow administration, ITSM/HAM or platform scripting unless those
@@ -1499,14 +2146,18 @@ export function buildGeneratePrompt({
   jobSkillDraftMode = false,
   jobAlignedExperienceTitles = true,
   companyInfoOnly = true,
+  completedProjectEvidence = [],
 } = {}) {
   const originalProfile = candidateProfile ?? form ?? {};
+  const evidenceProfile = withConfirmedEmployerExperience(originalProfile, confirmedAdditionalExperience);
   const profile = companyInfoOnly
-    ? buildCompanyOnlyProfile(originalProfile, job)
-    : withoutContactDetails(originalProfile);
+    ? buildCompanyOnlyProfile(evidenceProfile, job)
+    : withoutContactDetails(evidenceProfile);
   const description = compactJobDescription(job?.description ?? job?.jobDescription ?? job?.rawDescription ?? job?.posting ?? '');
   const hasListedSkills = !companyInfoOnly && hasExplicitSkills(profile, verifiedSkills, confirmedKeywords);
+  const completedProjects = collectCompletedProjectEvidence(originalProfile, completedProjectEvidence);
   const jobSkillCandidates = collectJobSkillCandidates(job);
+  const confirmedWork = collectConfirmedEmployerExperience(originalProfile, confirmedAdditionalExperience);
 
   // Static instructions first to allow prompt caching across jobs.
   // Keep one copy of the job description, compact all structured data, and
@@ -1526,6 +2177,10 @@ export function buildGeneratePrompt({
       jobAlignedExperienceTitles, companyInfoOnly,
     }),
     section(companyInfoOnly ? 'CANDIDATE_COMPANIES' : 'CANDIDATE_PROFILE', profile, MAX_PROFILE_CHARS),
+    section('COMPLETED_INDEPENDENT_PROJECTS', completedProjects.map(({ name, description, bullets, technologies, completedAt }) =>
+      ({ name, description, work: bullets, technologies, completedAt })), 2000),
+    ...(confirmedWork.length ? [section('CANDIDATE_ATTESTED_ADDITIONAL_WORK',
+      confirmedWork.map(({ company, period, achievements }) => ({ company, period, achievements })), 1600)] : []),
     ...(!companyInfoOnly ? [section('VERIFIED_SKILLS', verifiedSkills, 1600)] : []),
     ...(!companyInfoOnly ? [section('EVIDENCE', evidence, 1500)] : []),
     ...(!companyInfoOnly ? [section('CONFIRMED_ADDITIONAL_EXPERIENCE', confirmedAdditionalExperience, 1800)] : []),

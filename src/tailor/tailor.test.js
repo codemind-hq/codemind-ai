@@ -1481,3 +1481,24 @@ test('a new resume for the job is the model\'s answer as written, with the sourc
   assert.ok(made.changes.some((c) => c.kind === 'added' && c.role === 1 && c.after === 'Wrote a Kubernetes operator.'));
   assert.ok(made.changes.some((c) => c.kind === 'removed' && c.role === 1 && c.before === 'Built data services on AWS.'));
 });
+
+test('a new resume for the job never rewrites a link: project links and link sections are the source\'s', () => {
+  const source = {
+    ...SOURCE,
+    portfolio: 'AppStore Portfolio',
+    projects: [{ name: 'Caller ID', role: 'Lead', period: '2021', link: 'https://apps.apple.com/app/caller-id', highlights: ['Shipped it.'] }],
+    otherSections: [{ title: 'Links', content: 'AppStore Portfolio' }, { title: 'Volunteering', content: 'Mentored students.' }],
+  };
+  const answer = {
+    summary: 'Engineer.', skills: ['Swift'], skillGroups: [], achievements: [],
+    experience: [{ company: 'Northwind', title: 'Engineer', period: 'Oct 2019 - now', achievements: [{ text: 'Built services.', estimate: '' }] }],
+    projects: [{ name: 'Caller ID', role: 'Lead', period: '2021', link: 'https://example.com/made-up', highlights: ['Shipped it.'] }],
+    otherSections: [{ title: 'Links', content: 'https://example.com/new' }, { title: 'Volunteering', content: 'Mentored students.' }],
+  };
+  const { form } = generatedResumeForm(source, answer);
+  assert.equal(form.portfolio, 'AppStore Portfolio');
+  assert.equal(form.projects[0].link, 'https://apps.apple.com/app/caller-id', 'the project keeps its own link');
+  assert.deepEqual(form.otherSections.filter((o) => o.title === 'Links'), [{ title: 'Links', content: 'AppStore Portfolio' }], 'the links section is the resume\'s own');
+  assert.ok(form.otherSections.some((o) => o.title === 'Volunteering'), 'other sections are the model\'s');
+  assert.deepEqual(generatedResumeForm(source, { ...answer, otherSections: [] }).form.otherSections, [{ title: 'Links', content: 'AppStore Portfolio' }], 'kept even when the model returned none');
+});
