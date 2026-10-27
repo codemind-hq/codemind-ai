@@ -31,7 +31,7 @@ export { parseResumeText } from './parse/service.js';
 export { extractJobRequirements, quickScoreResume, scoreVersion } from './ats/service.js';
 export { fillTailoringGaps, tailorResumeForm } from './tailor/service.js';
 export { runTailoring, SCORE_ROUNDS } from './tailor/pipeline.js';
-export { estimateClause, TAILOR_STYLES, tailorStyle, withEstimate } from './tailor/index.js';
+export { estimateClause, GENERATE_STYLE, TAILOR_STYLES, tailorStyle, withEstimate } from './tailor/index.js';
 export { FIELD_NOTE_CATEGORIES } from './tailor/fieldNotes.js';
 export { generateApplicationAnswer, generateApplicationAnswers, generateCoverLetter, generateReferral } from './writing/letters/index.js';
 export { BLOCKING_INTRO_ISSUES, INSTRUCTIONS_LIMIT, INTRO_MAX_WORDS, SUBJECT_LIMIT, founderIntroIssues, generateFounderIntro, stripGreetingAndSignoff, wordCount } from './writing/letters/index.js';

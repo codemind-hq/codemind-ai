@@ -126,7 +126,7 @@
  */
 
 /**
- * @typedef {'ats'|'balanced'|'realistic'} TailorStyle How far tailoring leans to the score (tailor/style.js).
+ * @typedef {'ats'|'balanced'|'realistic'|'generate'} TailorStyle How far tailoring leans to the score (tailor/style.js; 'generate' is never picked, see there).
  */
 
 export {};

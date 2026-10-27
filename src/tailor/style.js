@@ -11,9 +11,14 @@
 //              nearly name already, one new bullet a role at most.
 // None invents an employer, a title, a date, a degree or a figure, and everything any of them
 // adds is listed for the user to remove.
+// A fourth mode is never picked: 'generate' is "Write a new resume for this job" (jobRoutes
+// generate, Smart Apply's generate task). It writes the resume afresh for the job rather than
+// editing the old one's lines, aims above 90 in lines a reader believes, and reaches as far as
+// the score-first mode for a term the resume's field makes plausible without forcing in the rest.
 export const TAILOR_STYLES = ['ats', 'balanced', 'realistic'];
+export const GENERATE_STYLE = 'generate';
 export const DEFAULT_TAILOR_STYLE = 'balanced';
-export const tailorStyle = (value) => (TAILOR_STYLES.includes(value) ? value : DEFAULT_TAILOR_STYLE);
+export const tailorStyle = (value) => (TAILOR_STYLES.includes(value) || value === GENERATE_STYLE ? value : DEFAULT_TAILOR_STYLE);
 
 /**
  * The knobs of each mode. `target` is the score the gap passes stop at and `gapPasses` how many
@@ -65,6 +70,19 @@ export const TAILOR_MODES = {
     preferredGaps: false,
     summarySentences: [3, 4],
   },
+  generate: {
+    target: 90,
+    gapPasses: 3,
+    flatPasses: 1,
+    maxAssumedTerms: 10,
+    maxTermsPerLine: 2,
+    maxTermsPerRole: 8,
+    maxEstimates: 5,
+    newBulletsPerRole: Infinity,
+    forceAssumed: false,
+    preferredGaps: false,
+    summarySentences: [3, 4],
+  },
 };
 export const tailorMode = (style) => TAILOR_MODES[tailorStyle(style)];
 
@@ -76,6 +94,8 @@ export const PLAUSIBLE_BY_STYLE = {
   ats: 'Plausible means a tool anyone doing the work the resume describes, in its field, could have used: a tool inside a stack RESUME shows, or the standard tool of a kind of work a bullet describes, even when RESUME names none of that kind. Only a programming language, framework family, cloud or field RESUME shows no sign of is left out (Java and Spring for a Python and Node.js engineer; Go; Google Cloud for someone who only names AWS): adding those would be inventing a career.',
   balanced:
     'Plausible means a tool that lives inside a stack RESUME already shows — Express for someone building Node.js backends; Jest or Cypress for someone shipping React; Apollo Server for someone working with GraphQL and Node.js; an ORM or query builder for someone writing Node.js services on PostgreSQL; Kubernetes for someone who containerizes and deploys services with Docker on a cloud. When the job offers alternatives ("an ORM such as Prisma, TypeORM or Knex"), add one, at most two: nobody lists them all.\nLeave out what belongs to a programming language, framework family, cloud or field RESUME shows no sign of (Java and Spring for a Python and Node.js engineer; Go; Google Cloud for someone who only names AWS): adding those would be inventing a career.',
+  generate:
+    'Plausible means a tool anyone doing the work the resume describes, in its field, could have used: a tool inside a stack RESUME shows, or the standard tool of a kind of work a bullet describes, even when RESUME names none of that kind. When the job offers alternatives ("an ORM such as Prisma, TypeORM or Knex"), add one, at most two: nobody lists them all.\nLeave out what belongs to a programming language, framework family, cloud or field RESUME shows no sign of (Java and Spring for a Python and Node.js engineer; Go; Google Cloud for someone who only names AWS): adding those would be inventing a career.',
   realistic:
     "Plausible means a term one of RESUME's own bullets nearly names already: the thing a bullet describes doing under another name (\"REST APIs\" for a bullet about building HTTP endpoints; \"CI/CD\" for one about automating deploys), or the one standard tool of exactly the work a bullet describes (Docker for a bullet that containerizes a service). A tool that merely belongs to the same stack is not enough here: when no bullet comes that close, leave the term out and name it in suggestions instead.\nLeave out anything of a programming language, framework family, cloud or field RESUME shows no sign of.",
 };

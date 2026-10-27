@@ -34,6 +34,7 @@ const GAP_SYSTEM_PROMPT =
 const REACH_BY_STYLE = {
   ats: "The candidate chose the score first: a gap a line of work can meet is written in, with the term the requirement names, wherever the role's work could have used it.",
   balanced: `The candidate chose a resume a reader believes: a gap is written in only where the candidate's own work makes it plausible, and otherwise skipped. ${PLAUSIBLE_BY_STYLE.balanced.replace(/\n/g, ' ')}`,
+  generate: `The candidate asked for a new resume for this job that reads as real: a gap is written in where the candidate's work makes it plausible, leaning towards writing it, and otherwise skipped. ${PLAUSIBLE_BY_STYLE.generate.replace(/\n/g, ' ')}`,
   realistic: `The candidate chose a resume that looks real first: a gap is written in only on the resume's own lines, and a term the resume lacks only where a bullet nearly names it already; otherwise skip it. ${PLAUSIBLE_BY_STYLE.realistic.replace(/\n/g, ' ')} At most one new bullet in a role; extend an existing one wherever it can carry the line.`,
 };
 

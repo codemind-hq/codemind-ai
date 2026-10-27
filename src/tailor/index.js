@@ -6,7 +6,7 @@
 // requirement pasted — have a file each. ai/service.js runs the calls; this folder decides.
 
 export { buildTailorPrompt, resumeBlock, TAILOR_SYSTEM_PROMPT } from './prompt.js';
-export { DEFAULT_TAILOR_STYLE, PLAUSIBLE_BY_STYLE, TAILOR_MODES, TAILOR_STYLES, tailorMode, tailorStyle } from './style.js';
+export { DEFAULT_TAILOR_STYLE, GENERATE_STYLE, PLAUSIBLE_BY_STYLE, TAILOR_MODES, TAILOR_STYLES, tailorMode, tailorStyle } from './style.js';
 export { tailoredResumeForm, withoutCuts } from './form.js';
 export { limitSkills } from './skills.js';
 export { resumeHeadline } from './headline.js';

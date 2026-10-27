@@ -107,9 +107,14 @@ const STYLE_LEAD = {
 - Cover an open verdict on the resume's own lines: extend the bullet that already does the work, in the requirement's term; give a measured requirement its estimated figure; and name a term the resume lacks only where KEYWORD_RULES finds a bullet that nearly names it already.
 - A verdict no existing bullet comes close to stays open: at most one new bullet ("from": null) in a role, for the requirement that role's work most plainly supports, and the rest named in suggestions.
 - Realism over coverage, every time: when a line would make a reader ask "did they really?", leave it out.`,
+  generate: `The candidate asked for a new resume written for this job, not an edit of their old one. Aim for a resume an ATS scores above 90 for this job that reads like a real resume in this field, every line one the candidate could defend in an interview; they review and remove what is not true before sending it. ${HARD_LIMITS_SENTENCE}
+- RESUME is the record of the candidate's roles and the work in them, not a draft to keep: its wording, order and emphasis are worth nothing for their own sake. This overrides "copy such a bullet exactly" in "How to tailor": write each bullet afresh, in this job's vocabulary, about the work its source bullet describes ("from" is still that bullet), and copy one only where it already says that work in this job's terms.
+- Cover each open required verdict the candidate's work makes plausible by KEYWORD_RULES's bar, and lean towards covering: in skills, and in a bullet that demonstrates it — a sentence about work, the thing built or run, with the tool as the means. The program's scorer marks a list of tools, and a requirement's sentence copied as a bullet, as a mention and not evidence: neither earns the score.
+- A verdict that needs a programming language, framework family, cloud, product or field the resume shows no sign of stays open: leave it out of the resume and name it in suggestions.
+- Looks real: the job's terms spread over the bullets that would have used them, figures modest, and once a requirement is met it is not met again. One believable line beats two that read as the posting written in.`,
 };
 
-const STYLE_LABEL = { ats: 'score first', balanced: 'balanced', realistic: 'looks real first' };
+const STYLE_LABEL = { ats: 'score first', balanced: 'balanced', realistic: 'looks real first', generate: 'a new resume for this job' };
 
 /** The STYLE section: the mode's lead, then how a verdict is answered, with the mode's numbers in it. */
 function styleSection(style) {
@@ -204,12 +209,12 @@ function scorerNotes(scoring, confirmed) {
 
 const COMPANY_SUMMARY_CHARS = 1200;
 
-// A resume generated for a job its resumes barely match ("Generate resume" on the job page): the
-// rewrite leads with the work that transfers instead of copying bullets that already read well
-// for other work. Only on that request, so every other tailoring's prompt (and its cache) is as before.
+// "Write a new resume for this job" (the generate style, style.js): the rewrite leads with the work
+// that transfers instead of keeping the old resume's emphasis. Only on that request, so every other
+// tailoring's prompt (and its cache) is as before.
 const REFOCUS_SECTION = `REFOCUS:
-This resume was written for different work than this job: none of the candidate's resumes match it well. Write it for this job as far as the truth rules allow — they still hold in full:
-- Lead every role with the bullets whose work this job also needs (analysis, automation, building, operating, customers, the tools both share), and rewrite each of them in this job's vocabulary. A bullet you would copy unchanged for its own field is rewritten here wherever a truthful wording in this job's terms exists.
+This resume is written for this job from the candidate's record, whatever their old resume was written for. The truth rules still hold in full:
+- Lead every role with the bullets whose work this job also needs (analysis, automation, building, operating, customers, the tools both share), each in this job's vocabulary. Work this job has no use for goes last or goes, as long as a role keeps at least one bullet.
 - summary: written toward this job and, where COMPANY_SUMMARY is given, the kind of company it is — the candidate's own level, years and strongest transferable work, as RESUME shows them. Never claim the job's title, field or years in it.
 - skills: this job's skills that RESUME or KEYWORD_RULES allows first; drop the ones this job has no use for.`;
 
