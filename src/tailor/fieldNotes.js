@@ -1,4 +1,4 @@
-// What counts in a job's field, for the tailoring prompts (tailor/prompt.js, tailor/gap.js): the figures that mean
+// What counts in a job's field, for the tailoring prompts (tailor/prompts/, tailor/gap.js): the figures that mean
 // something there, with their units, so an estimated figure is one of them and not a guess; the
 // duties a resume in the field is expected to show, so the gap pass writes a line for cost or
 // on-call rather than skipping them; the field's terms for everyday work, so a bullet is

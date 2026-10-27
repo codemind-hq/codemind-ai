@@ -1,11 +1,11 @@
 // Tailoring: the pure half of rewriting a resume for one job. The model is shown a prompt
-// (prompt.js) and answers with the rewritable parts of the form; the code then puts every fact
-// back and judges every line (form.js, with bullets.js, skills.js, headline.js, summary.js), and
-// two smaller rounds follow the rewrite: the gap pass (gap.js) and the repair round (repair.js).
+// (prompts/: tailor.js, or generate.js for a new resume for the job) and answers with the
+// rewritable parts of the form; the code then puts every fact back and judges every line
+// (form.js, with bullets.js, skills.js, headline.js, summary.js), and two smaller rounds follow the rewrite: the gap pass (gap.js) and the repair round (repair.js).
 // The checks the rounds share — claims no line may make, estimated figures, assumed terms, a
 // requirement pasted — have a file each. ai/service.js runs the calls; this folder decides.
 
-export { buildTailorPrompt, resumeBlock, TAILOR_SYSTEM_PROMPT } from './prompt.js';
+export { buildGeneratePrompt, buildTailoringPrompt, buildTailorPrompt, GENERATE_SYSTEM_PROMPT, resumeBlock, TAILOR_SYSTEM_PROMPT } from './prompts/index.js';
 export { DEFAULT_TAILOR_STYLE, GENERATE_STYLE, PLAUSIBLE_BY_STYLE, TAILOR_MODES, TAILOR_STYLES, tailorMode, tailorStyle } from './style.js';
 export { tailoredResumeForm, withoutCuts } from './form.js';
 export { limitSkills } from './skills.js';

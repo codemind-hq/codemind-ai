@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyRepairs, buildRepairPrompt, buildTailorPrompt, limitSkills, overstatedEstimate, repairTargets, resumeBlock, resumeHeadline, withEstimate, withoutEstimate, splitJobKeywords, tailoredResumeForm, tailorStyle, TAILOR_STYLES, withoutCuts } from './index.js';
+import { applyRepairs, buildGeneratePrompt, buildRepairPrompt, buildTailorPrompt, limitSkills, overstatedEstimate, repairTargets, resumeBlock, resumeHeadline, withEstimate, withoutEstimate, splitJobKeywords, tailoredResumeForm, tailorStyle, TAILOR_STYLES, withoutCuts } from './index.js';
 import { TAILOR_RESPONSE_FORMAT } from './schema.js';
 import { cleanStructuredResume } from '../resume/structuredResume.js';
 
@@ -1414,9 +1414,9 @@ test('a generated resume asks for a refocus and sees the company summary, fenced
   assert.match(generated, /REFOCUS:\nThis resume is written for this job from the candidate's record/);
   assert.match(generated, /COMPANY_SUMMARY \(what the employer's website says it does[^\n]*\n<company_summary>\nAcme builds billing software for clinics\./);
   assert.equal(generated.split('</company_summary>').length, 2, 'a closing tag inside the summary is neutralised');
-  // The same mode's prompt up to its style section is the generated one's too: the cached prefix holds.
-  const balanced = buildTailorPrompt({ form: SOURCE, job: JOB, style: 'balanced' }).user;
-  assert.ok(generated.startsWith(balanced.split('KEYWORD_RULES:')[0]), 'the instructions and resume come first, as before');
+  // A new resume has its own prompt (prompts/generate.js), laid out the same way: instructions and resume first.
+  assert.equal(generated, buildGeneratePrompt({ form: SOURCE, job: { ...JOB, companySummary: summary }, refocus: true }).user);
+  assert.match(generated, /^Tailor the resume to the job\.[\s\S]*\n\nRESUME:\n[\s\S]*\n\nKEYWORD_RULES:\n/);
 });
 
 test('a new resume for the job aims above 90 in lines that read as real, written afresh, never forcing in a career', () => {
