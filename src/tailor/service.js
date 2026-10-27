@@ -16,8 +16,9 @@ import { GAP_RESPONSE_FORMAT, REPAIR_RESPONSE_FORMAT, TAILOR_RESPONSE_FORMAT } f
  * `assumedKeywords` are missing ones the user left to the rewrite (added where plausible by
  * the mode's bar — or all of them, when `style` is 'ats': the score first, see style.js), and
  * `blockedKeywords` are the ones they declined; `evidence` is what they said about a confirmed
- * one ([{ keyword, role, note }]); `instructions` are the user's own style notes. `changes`
- * lists every experience bullet rewritten, added or removed.
+ * one ([{ keyword, role, note }]); `instructions` are the user's own style notes. `refocus` is a
+ * generated resume's request: lead with the work that transfers to a job the resume was not
+ * written for (prompt.js). `changes` lists every experience bullet rewritten, added or removed.
  * A rewrite that kept none of the resume's roles is tried once more, cooler.
  *
  * @param {import('../types.js').ResumeForm} form
@@ -28,10 +29,10 @@ import { GAP_RESPONSE_FORMAT, REPAIR_RESPONSE_FORMAT, TAILOR_RESPONSE_FORMAT } f
 export async function tailorResumeForm(
   form,
   job,
-  { scoring = null, confirmedKeywords = null, assumedKeywords = [], optionalKeywords = [], evidence = [], blockedKeywords = [], instructions = '', style, model, meta = {}, serviceTier } = {}
+  { scoring = null, confirmedKeywords = null, assumedKeywords = [], optionalKeywords = [], evidence = [], blockedKeywords = [], instructions = '', style, model, meta = {}, serviceTier, refocus = false } = {}
 ) {
   style = tailorStyle(style);
-  const prompt = buildTailorPrompt({ form, job, scoring, confirmedKeywords, assumedKeywords, optionalKeywords, evidence, instructions, style });
+  const prompt = buildTailorPrompt({ form, job, scoring, confirmedKeywords, assumedKeywords, optionalKeywords, evidence, instructions, style, refocus });
   const sourceText = structuredResumeToText(cleanStructuredResume(form));
   const reasoningEffort = tailorEffort(model);
   return withFallback(

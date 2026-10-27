@@ -61,6 +61,8 @@ export async function runTailoring({
   // 'flex' for a tailoring nobody is waiting on (Smart Apply): every call rides OpenAI's half-price tier.
   serviceTier,
   scoreRounds = 'each',
+  // A generated resume (prompt.js REFOCUS_SECTION): the rewrite leads with the work that transfers.
+  refocus = false,
 }) {
   const before = scoring || (await quickScoreResume(form, job, meta, { serviceTier }));
 
@@ -95,7 +97,7 @@ export async function runTailoring({
     : [];
 
   const request = { confirmedKeywords, blockedKeywords, evidence, style, instructions, model, meta, serviceTier };
-  let tailored = await tailorResumeForm(form, job, { ...request, scoring: before, assumedKeywords: assumed, optionalKeywords: optional });
+  let tailored = await tailorResumeForm(form, job, { ...request, refocus, scoring: before, assumedKeywords: assumed, optionalKeywords: optional });
 
   // The rewrite is judged against the source's own verdicts, so its score moves only for what it changed.
   const beforeRequirements = typeof before.toObject === 'function' ? before.toObject().requirements : before.requirements;
