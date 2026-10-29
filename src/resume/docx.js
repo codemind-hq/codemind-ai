@@ -231,6 +231,13 @@ function datesFit({ title, org, dates }, t) {
   return line + textWidth(dates, t.sizes.small, glyph) + DATES_GAP <= pageWidth(t);
 }
 
+/**
+ * True when every dated entry of a section fits its dates beside its title (datesFit). A section
+ * sets them one way: Fast Enterprises' dates at the margin between two roles whose dates sat on a
+ * line of their own read as a layout gone wrong.
+ */
+const sectionDatesFit = (section, t) => (section.blocks || []).every((b) => b.type !== 'entry' || !b.dates || datesFit(b, t));
+
 /** How many pages a document model fills in a template (the template itself, not its id), unrounded. */
 function pagesIn(model, t) {
   const width = pageWidth(t);
@@ -245,10 +252,11 @@ function pagesIn(model, t) {
   if (model.contact?.length) height += block(model.contact.join(t.header.separator), t.sizes.small, t.spacing.paragraph);
   for (const section of model.sections || []) {
     height += t.sizes.heading * LINE_HEIGHT + (t.spacing.sectionBefore + t.spacing.sectionAfter) / TWIPS;
+    const inline = sectionDatesFit(section, t);
     for (const b of section.blocks || []) {
       if (b.type === 'entry') {
         const titleLines = Math.max(1, Math.ceil((textWidth(b.title, t.sizes.body, glyph, true) + (b.org ? textWidth(`  ·  ${b.org}`, t.sizes.body, glyph) : 0)) / width));
-        const dateLine = b.dates && !datesFit(b, t) ? t.sizes.small * LINE_HEIGHT : 0;
+        const dateLine = b.dates && !inline ? t.sizes.small * LINE_HEIGHT : 0;
         height += titleLines * t.sizes.body * LINE_HEIGHT + dateLine + (t.spacing.entryBefore + t.spacing.bullet) / TWIPS;
       } else if (b.type === 'bullets') for (const item of b.items) height += block(item, t.sizes.body, t.spacing.bullet, 18);
       else height += block(b.text, t.sizes.body, t.spacing.paragraph);
@@ -329,14 +337,15 @@ function headingParagraph(text, t) {
   });
 }
 
-function entryParagraph(entry, t) {
+function entryParagraph(entry, t, inline = datesFit(entry, t)) {
   const { title, org, dates } = entry;
   const children = [new TextRun({ text: title, bold: true })];
   if (org) children.push(new TextRun({ text: `  ·  ${org}` }));
-  // Right-aligned at the margin when they fit beside the title, else on the next line (datesFit).
+  // Right-aligned at the margin when every entry of the section fits them beside its title, else on
+  // the next line (sectionDatesFit): one way for the whole section.
   if (dates) {
     const style = { color: t.colors.muted, size: pt(t.sizes.small) };
-    children.push(datesFit(entry, t) ? new TextRun({ text: `\t${dates}`, ...style }) : new TextRun({ text: dates, break: 1, ...style }));
+    children.push(inline ? new TextRun({ text: `\t${dates}`, ...style }) : new TextRun({ text: dates, break: 1, ...style }));
   }
   return new Paragraph({
     keepNext: true,
@@ -387,8 +396,9 @@ export function buildResumeDocx(model, templateId) {
 
   for (const section of model.sections) {
     children.push(headingParagraph(section.heading, t));
+    const inline = sectionDatesFit(section, t);
     for (const block of section.blocks) {
-      if (block.type === 'entry') children.push(entryParagraph(block, t));
+      if (block.type === 'entry') children.push(entryParagraph(block, t, inline));
       else if (block.type === 'bullets') {
         for (const item of block.items) children.push(new Paragraph({ bullet: { level: 0 }, spacing: { after: t.spacing.bullet }, children: bulletRuns(item) }));
       } else children.push(new Paragraph({ spacing: { after: t.spacing.paragraph }, children: paragraphRuns(block) }));

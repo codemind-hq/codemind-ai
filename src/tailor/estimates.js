@@ -29,11 +29,32 @@ const tidy = (text) =>
 /** The estimate's clause as it is shown and edited: "cutting response times by ~30%". */
 export const estimateClause = (clause) => squash(clause).replace(/^[,;:\s]+|[.,;\s]+$/g, '');
 
+// What a clause measures, without its verb and figure: "reducing app start time by ~15%" is
+// {app, start, time}. Two estimates of one measure contradict each other ("reducing app start time
+// by ~15%" on one bullet and "by ~10%" on the next, both written in by one tailoring).
+const MEASURE_FILLER = new Set(['by', 'about', 'around', 'roughly', 'approximately', 'nearly', 'over', 'up', 'to', 'from', 'the', 'a', 'an', 'of', 'per', 'and', 'in', 'on', 'for', 'percent', 'hours', 'hour', 'minutes', 'minute', 'seconds', 'second', 'days', 'day', 'weeks', 'week', 'ms']);
+const measureOf = (clause) =>
+  lower(estimateClause(clause))
+    .replace(/[~≈]?\d[\d.,]*\s*(?:%|x|×|k|m|ms|s)?/g, ' ')
+    .split(/[^a-z0-9+#-]+/)
+    .filter((w, i) => w && !MEASURE_FILLER.has(w) && !(i === 0 && /ing$/.test(w)));
+
+/**
+ * True when two estimate clauses measure the same thing: the same words once verb and figure are
+ * gone. Only the same words: "cutting deploy time" and "cutting billing deploy time" may be two
+ * services' figures.
+ */
+export const sameMeasure = (a, b) => {
+  const [x, y] = [new Set(measureOf(a)), new Set(measureOf(b))];
+  return x.size > 0 && x.size === y.size && [...x].every((w) => y.has(w));
+};
+
 // Two clauses that end the same way state the same figure of the same thing ("…and reducing
-// recurring production issues by ~15%" is "reducing recurring production issues by ~15%" again).
+// recurring production issues by ~15%" is "reducing recurring production issues by ~15%" again);
+// two that measure the same thing state it twice, whatever the figures (sameMeasure).
 export const sameFigure = (a, b) => {
   const tail = (c) => lower(estimateClause(c)).split(/\s+/).slice(-4).join(' ');
-  return Boolean(tail(a)) && tail(a) === tail(b);
+  return (Boolean(tail(a)) && tail(a) === tail(b)) || sameMeasure(a, b);
 };
 
 /** A bullet without its estimate clause, or null when the clause is not in it. */

@@ -4,6 +4,8 @@ import { structuredResumeToText } from '../resume/structuredResume.js';
 import { fillTailoringGaps, repairGapLines, tailorResumeForm } from './service.js';
 import { markAnswered } from './requirements.js';
 import { unbackedStackTerms } from './stack.js';
+import { withListedSkills } from './skills.js';
+import { skillTerm } from './terms.js';
 import { withinPageBudget } from './pages.js';
 import { GENERATE_STYLE, postingTerms, splitAssumedTerms, tailorMode, tailorStyle, withoutCuts } from './index.js';
 
@@ -100,10 +102,21 @@ export async function runTailoring({
     optional: offeredSplit.optional.filter(backed),
     leftOut: uniqueKeywords([...offeredSplit.leftOut, ...unbackedStack]),
   };
+  // Score first: every skill among the missing keywords the user left on (the chips, sent as
+  // `assumedKeywords`) must be in — NestJS, unit testing — past the cap and whether or not the
+  // rewrite finds a line for it; one it leaves out is listed under skills after the rewrite. Not
+  // a condition of the job ("background check"), and not a stack the resume never shows
+  // (asked instead, as above). Each is listed after tailoring for the user to keep or remove.
+  const chipSkills = mode.forceAssumed
+    ? uniqueKeywords(assumedKeywords).filter((k) => skillTerm(k) && !hasKeyword(originalText, k) && !declined(k) && !confirmed.some((c) => sameKeyword(c, k)))
+    : [];
+  const chipStack = unbackedStackTerms(chipSkills, originalText, confirmed);
+  const mustInclude = chipSkills.filter((k) => !chipStack.some((s) => sameKeyword(s, k)));
   // Score first forces the nice-to-haves in as well, after the required terms and within the
   // same cap: the job's preferred skills are a tenth of the score (ats/breakdown.js), and a
   // resume that names none of them tops out around 85 whatever else it says.
-  const forced = mode.forceAssumed ? uniqueKeywords([...split.assumed, ...split.optional]).slice(0, mode.maxAssumedTerms) : split.assumed;
+  const capped = uniqueKeywords([...split.assumed, ...split.optional]).filter((k) => !mustInclude.some((m) => sameKeyword(m, k)));
+  const forced = mode.forceAssumed ? [...mustInclude, ...capped.slice(0, Math.max(0, mode.maxAssumedTerms - mustInclude.length))] : split.assumed;
   const assumed = forced;
   const optional = split.optional.filter((k) => !forced.some((f) => sameKeyword(f, k)));
   const assumedAll = [...assumed, ...optional];
@@ -111,10 +124,14 @@ export async function runTailoring({
   const blockedKeywords = uniqueKeywords([
     ...(Array.isArray(confirmedKeywords) ? candidates.filter((k) => !hasKeyword(originalText, k) && !allowed.some((c) => sameKeyword(c, k))) : []),
     ...unbackedStack,
+    ...chipStack,
   ]);
+  split.leftOut = uniqueKeywords([...split.leftOut, ...chipStack]);
 
   const request = { confirmedKeywords, blockedKeywords, evidence, style, instructions, model, meta, serviceTier };
   let tailored = await tailorResumeForm(form, job, { ...request, refocus, scoring: before, assumedKeywords: assumed, optionalKeywords: optional });
+  // A must-include skill the rewrite (or its skill checks) left out goes in the skills list, before anything is scored.
+  if (mustInclude.length) tailored = { ...tailored, form: withListedSkills(tailored.form, mustInclude, structuredResumeToText(tailored.form)) };
 
   // The rewrite is judged against the source's own verdicts, so its score moves only for what it changed.
   const beforeRequirements = typeof before?.toObject === 'function' ? before.toObject().requirements : before?.requirements;

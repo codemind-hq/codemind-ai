@@ -28,7 +28,8 @@ export const tailorStyle = (value) => (TAILOR_STYLES.includes(value) || value ==
  * on assumption (terms.js); `maxEstimates` the estimated figures (estimates.js);
  * `newBulletsPerRole` the lines from no source bullet a role may gain (bullets.js);
  * `forceAssumed` whether an open verdict is written in without the resume's work making it
- * plausible; `preferredGaps` whether a nice-to-have counts as a gap to write for; and
+ * plausible; `keepOrder` whether a role's bullets keep the resume's own order (bullets.js
+ * inSourceOrder) rather than the model's; `preferredGaps` whether a nice-to-have counts as a gap to write for; and
  * `summarySentences` the summary's length (prompt.js, repair.js).
  */
 export const TAILOR_MODES = {
@@ -72,6 +73,7 @@ export const TAILOR_MODES = {
     maxTermsPerRole: 4,
     maxEstimates: 4,
     newBulletsPerRole: 1,
+    keepOrder: true,
     forceAssumed: false,
     preferredGaps: false,
     summarySentences: [3, 4],

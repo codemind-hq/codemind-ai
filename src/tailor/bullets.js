@@ -212,3 +212,26 @@ export function traceBullets(
   });
   return { bullets: unique(kept), changes };
 }
+
+/**
+ * A role's kept bullets in the order the resume had them: each stands where its source bullet
+ * stood (a rewrite by its `changes` entry), and a line from no bullet stays after the one it
+ * followed. Looking real first keeps the candidate's own order (style.js keepOrder): a model asked
+ * for the most relevant first put "Shipped…" and "Led…" last, under lines a reader weighs less.
+ */
+export function inSourceOrder(bullets, sourceBullets, changes = []) {
+  const sourceAt = (text) => {
+    const own = sourceBullets.indexOf(text);
+    if (own >= 0) return own;
+    const change = changes.find((c) => c.kind === 'rewritten' && c.after === text);
+    return change ? sourceBullets.indexOf(change.before) : -1;
+  };
+  let last = -1;
+  // An added line takes the place just after the bullet before it (by a fraction, so ties keep the model's order).
+  const keyed = bullets.map((text, i) => {
+    const at = sourceAt(text);
+    if (at >= 0) last = at;
+    return { text, key: at >= 0 ? at : last + 0.5, i };
+  });
+  return keyed.sort((a, b) => a.key - b.key || a.i - b.i).map((b) => b.text);
+}

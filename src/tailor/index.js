@@ -14,7 +14,7 @@ export { resumeHeadline } from './headline.js';
 export { listSentences, MIN_SUMMARY_SENTENCES, MIN_SUMMARY_WORDS, summaryWithoutClaims, summaryWithoutLists, summaryWithSourceTenure, summaryWords, titleTerms } from './summary.js';
 export { estimateClause, overstatedEstimate, withEstimate, withoutEstimate } from './estimates.js';
 export { claimsClearance, claimsCredential } from './claims.js';
-export { assumableTerm, crossesPlatform, gluedTerm, MAX_ASSUMED_TERMS, postingTerms, splitAssumedTerms, splitJobKeywords } from './terms.js';
+export { assumableTerm, skillTerm, crossesPlatform, gluedTerm, MAX_ASSUMED_TERMS, postingTerms, splitAssumedTerms, splitJobKeywords } from './terms.js';
 export { copiedRequirement, echoesRequirement } from './copied.js';
 export { applyGapLines, buildGapPrompt, MAX_GAP_LINE_CHARS } from './gap.js';
 export { applyRepairs, buildRepairPrompt, REPAIR_SYSTEM_PROMPT, repairTargets } from './repair.js';

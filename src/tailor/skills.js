@@ -312,3 +312,18 @@ export function backedSkillGroups(groups, { sourceSkills = [], confirmed = [], s
   const backed = (skill) => own.has(skillKey(skill)) || own.has(canonicalSkill(skill)) || confirmed.some((k) => hasKeyword(skill, k)) || hasKeyword(shown, skill);
   return groups.map((g) => ({ ...g, items: g.items.filter(backed) })).filter((g) => g.items.length);
 }
+
+/**
+ * `form` with each of `terms` its text does not name yet listed under its skills: in the Other
+ * category when the resume groups its skills, else at the end of the list. Score first's
+ * must-include terms (pipeline.js) go in this way when the rewrite left them out.
+ */
+export function withListedSkills(form, terms, text) {
+  const missing = (terms || []).filter((k) => typeof k === 'string' && k.trim() && !hasKeyword(text, k));
+  if (!missing.length) return form;
+  if (form.skillGroups?.length) {
+    const skillGroups = addToSkillGroups(form.skillGroups, missing);
+    return { ...form, skillGroups, skills: skillGroups.flatMap((g) => g.items) };
+  }
+  return { ...form, skills: [...(form.skills || []), ...missing] };
+}

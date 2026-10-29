@@ -1,7 +1,7 @@
 import { hasKeyword } from '../text/keywords.js';
 import { cleanStructuredResume, structuredResumeToText } from '../resume/structuredResume.js';
 import { factSources } from '../checks/index.js';
-import { traceBullets, writtenBullets } from './bullets.js';
+import { inSourceOrder, traceBullets, writtenBullets } from './bullets.js';
 import { withoutRepeatedBullets } from './detail.js';
 import { inventsFact } from './claims.js';
 import { resumeHeadline } from './headline.js';
@@ -154,7 +154,8 @@ export function tailoredResumeForm(
     });
     changes.push(...traced.changes.map((c) => ({ role, ...c })));
     estimated.push(...budget.list.filter((e) => traced.bullets.includes(e.text)).map((e) => ({ role, ...e })));
-    return { ...entry, title: titleOf(entry, roles[role]), achievements: traced.bullets };
+    const achievements = mode.keepOrder ? inSourceOrder(traced.bullets, entry.achievements, traced.changes) : traced.bullets;
+    return { ...entry, title: titleOf(entry, roles[role]), achievements };
   });
   // The same work said twice, in one role or across two, is said once (detail.js).
   const deduped = withoutRepeatedBullets({ form: { experience: tracedRoles }, changes, estimates: estimated }, protectedKeywords);

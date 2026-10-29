@@ -107,10 +107,24 @@ test('a tailored resume that runs well onto a third page loses its least relevan
   const bullet = (i, term = '') => `Built and operated data service number ${i}${term} on the shared platform, cutting the nightly run from six hours to under one for three product teams.`;
   const experience = Array.from({ length: 6 }, (_, r) => ({ company: `Company ${r}`, title: 'Engineer', period: '2019 – 2021', achievements: Array.from({ length: 9 }, (_, i) => bullet(i, r === 0 ? ' with Python' : '')) }));
   const out = withinPageBudget({ form: { name: 'A', summary: 'Engineer.', experience }, changes: [], estimates: [] }, { protectedKeywords: ['Python'] });
-  assert.ok(out.cut > 0 && out.cut <= 8);
-  assert.equal(out.form.experience[0].achievements.length, 9, 'the bullets that name the job go last');
-  assert.ok(out.form.experience[5].achievements.length < 9, 'the oldest role gives first');
+  const counts = out.form.experience.map((e) => e.achievements.length);
+  assert.equal(counts[0], 9, 'under its cap of ten, and the bullets that name the job go last');
+  assert.ok(counts[1] <= 6 && counts.slice(2).every((n) => n <= 4), 'each older role to its cap');
+  assert.ok(counts[5] <= counts[2], 'the oldest role gives first');
   assert.equal(out.changes.filter((c) => c.kind === 'removed').length, out.cut, 'each cut can be put back');
+});
+
+test('a role past its cap loses its least relevant bullets, and a resume just over a page ends on one', async () => {
+  const { withinPageBudget, MAX_BULLETS_BY_ROLE } = await import('./pages.js');
+  const { renderedPages, formResumeModel } = await import('../resume/docx.js');
+  const bullet = (i, term = '') => `Built and operated data service number ${i}${term} on the shared platform for three product teams across two regions.`;
+  const experience = [{ company: 'Acme', title: 'Engineer', period: '2019 – 2026', achievements: Array.from({ length: 16 }, (_, i) => bullet(i, i < 6 ? ' with Python' : '')) }];
+  const out = withinPageBudget({ form: { name: 'A', summary: 'Engineer.', experience }, changes: [], estimates: [] }, { protectedKeywords: ['Python'] });
+  const kept = out.form.experience[0].achievements;
+  assert.ok(kept.length <= MAX_BULLETS_BY_ROLE[0]);
+  assert.equal(kept.filter((b) => b.includes('Python')).length, 6, 'what names the job stays');
+  assert.deepEqual(kept, [...kept].sort((a, b) => Number(a.match(/number (\d+)/)[1]) - Number(b.match(/number (\d+)/)[1])), 'in their order');
+  assert.ok(renderedPages(formResumeModel(out.form)) <= 1, 'one page, not a few lines onto a second');
 });
 
 test('a short skills list is topped up from the skills the bullets use, a whole category the cut dropped first', () => {

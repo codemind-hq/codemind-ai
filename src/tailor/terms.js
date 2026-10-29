@@ -1,4 +1,5 @@
 import { hasKeyword } from '../text/keywords.js';
+import { claimsClearance, claimsCredential } from './claims.js';
 import { SAME_WORDING, sameTerm, sameWording, squash, termsIn, unique } from './text.js';
 
 // ── Keywords and assumed terms ──────────────────────────────────────────────
@@ -52,6 +53,14 @@ export function assumableTerm(keyword) {
   if (NOT_A_TERM_RE.test(term) || ACTIVITY_NOUN_RE.test(term) || VERB_FORM_RE.test(term)) return false;
   return /[\p{L}\p{N}]/u.test(term);
 }
+
+// What a posting asks of the candidate that no skills list names: a check they pass, a condition
+// of the job ("background check", "travel", "on-call"). A clearance or a credential is caught by claims.js.
+const CANDIDATE_CONDITION_RE =
+  /\b(?:(?:background|criminal|reference|credit|employment) (?:checks?|screening)|drug (?:tests?|testing|screen\w*)|relocat\w*|travel\w*|on-?site|in-?office|hybrid|on-?call|overtime|weekends?|shifts?|driver'?s licen[cs]e|years?)\b/i;
+
+/** True when a keyword is a skill a resume lists — NestJS, unit testing — not a phrase of the posting or a condition of the job. */
+export const skillTerm = (keyword) => assumableTerm(keyword) && !CANDIDATE_CONDITION_RE.test(keyword) && !claimsClearance(keyword) && !claimsCredential(keyword);
 
 /**
  * The assumed terms score first writes in, from everything the job asks for that the resume
