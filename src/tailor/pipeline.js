@@ -39,7 +39,8 @@ export function gapPassProgressed(prior, next) {
  * Tailor `form` (the source resume's structured form) for `job` (with its `requirements`).
  * `originalText` is everything the source resume says (its upload's text and its form), which
  * decides what it already has. `scoring` is its cached score for the job; without one it is scored
- * first, because the scorer's findings steer the rewrite. `confirmedKeywords` (missing keywords the
+ * first, because the scorer's findings steer the rewrite (not for the generate style, whose
+ * `before` is then null). `confirmedKeywords` (missing keywords the
  * user says they have; null when not asked) limits added keywords to those, and `evidence` is what
  * they said about them ([{ keyword, role, note }]). `assumedKeywords` are missing keywords they
  * neither confirmed nor declined, `declinedKeywords` the ones they switched off. `style` is how far
@@ -68,12 +69,14 @@ export async function runTailoring({
   // A generated resume (prompt.js REFOCUS_SECTION): the rewrite leads with the work that transfers.
   refocus = false,
 }) {
-  const before = scoring || (await quickScoreResume(form, job, meta, { serviceTier }));
+  style = tailorStyle(style);
+  // A new resume for the job is written from the job, not steered by the old one's verdicts:
+  // nothing scores the source first (`before` is null unless the caller had a score).
+  const before = scoring || (style === GENERATE_STYLE ? null : await quickScoreResume(form, job, meta, { serviceTier }));
 
   // Every keyword the rewrite could be tempted to add. Asked and not confirmed means blocked.
   const confirmed = confirmedKeywords || [];
-  const candidates = [...(job.skills || []), ...(job.preferredSkills || []), ...keywordList(before.missingKeywords || before.topMissingKeywords)];
-  style = tailorStyle(style);
+  const candidates = [...(job.skills || []), ...(job.preferredSkills || []), ...keywordList(before?.missingKeywords || before?.topMissingKeywords)];
   const mode = tailorMode(style);
   const declined = (k) => declinedKeywords.some((d) => sameKeyword(d, k));
   // Left to the rewrite: everything the job asks for that the user did not switch off, not only
@@ -114,7 +117,7 @@ export async function runTailoring({
   let tailored = await tailorResumeForm(form, job, { ...request, refocus, scoring: before, assumedKeywords: assumed, optionalKeywords: optional });
 
   // The rewrite is judged against the source's own verdicts, so its score moves only for what it changed.
-  const beforeRequirements = typeof before.toObject === 'function' ? before.toObject().requirements : before.requirements;
+  const beforeRequirements = typeof before?.toObject === 'function' ? before.toObject().requirements : before?.requirements;
   const prior = beforeRequirements?.length ? { requirements: beforeRequirements, resumeText: structuredResumeToText(form) } : null;
   let after = await quickScoreResume(tailored.form, job, meta, { prior, serviceTier });
   // A new resume for the job is the model's answer and its repair round (service.js): scored, and
