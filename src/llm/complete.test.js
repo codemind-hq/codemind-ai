@@ -1,11 +1,11 @@
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import OpenAI from 'openai';
-import { complete } from './complete.js';
+import { complete, DEFAULT_FLEX_PATIENCE_SEC } from './complete.js';
 import { costFor } from './catalog.js';
 import { retryDelayMs } from './errors.js';
 import { withFallback } from './routing.js';
-import { installFakeLlm, rawResponse } from '../testing/fakeLlm.js';
+import { DEFAULT_MODELS, installFakeLlm, rawResponse } from '../testing/fakeLlm.js';
 
 // What complete() does with what a response carries besides its content: why it stopped, a refusal,
 // and the tokens it was billed for, also when the answer is unusable.
@@ -112,4 +112,62 @@ test('a call to a model with no price is logged once, so its spend does not go u
   const unpriced = warnings.filter(([, msg]) => /no price/i.test(msg));
   assert.equal(unpriced.length, 1);
   assert.equal(unpriced[0][0].model, 'mystery-model-x');
+});
+
+// Scoring and tailoring on flex with a deadline (Admin › AI flex settings).
+const flexOn = (flex) => ({ models: { ...DEFAULT_MODELS, flex } });
+const refusedFlex = () => Object.assign(new Error('Resource unavailable'), { status: 429, code: 'resource_unavailable' });
+
+test('a tailoring call goes on flex with the deadline once the admin turns it on, asked or not', async () => {
+  fake = installFakeLlm(['ok'], flexOn({ tailoring: true, patienceSec: 30 }));
+  await complete({ system: 's', user: 'u', model: 'gpt-6-luna' }, { kind: 'tailor', requestId: 'r1' });
+  assert.equal(fake.calls[0].request.service_tier, 'flex');
+  assert.equal(fake.calls[0].options.timeout, 30_000);
+  assert.equal(fake.events[0].flex, true);
+});
+
+test('with no patience set the deadline is the default', async () => {
+  fake = installFakeLlm(['ok'], flexOn({ scoring: true }));
+  await complete({ system: 's', user: 'u', model: 'gpt-6-luna' }, { kind: 'score', requestId: 'r2' });
+  assert.equal(fake.calls[0].options.timeout, DEFAULT_FLEX_PATIENCE_SEC * 1000);
+});
+
+test('a flex call past its deadline is sent again at once on the standard tier, and billed as standard', async () => {
+  fake = installFakeLlm([new OpenAI.APIConnectionTimeoutError(), 'ok'], flexOn({ tailoring: true, patienceSec: 30 }));
+  const result = await complete({ system: 's', user: 'u', model: 'gpt-6-luna' }, { kind: 'tailor', requestId: 'r3' });
+  assert.equal(result.text, 'ok');
+  assert.equal(fake.calls.length, 2);
+  assert.equal(fake.calls[1].request.service_tier, undefined);
+  assert.equal(fake.calls[1].options, null);
+  assert.equal(fake.events.length, 1);
+  assert.equal(fake.events[0].flex, false);
+  assert.equal(fake.events[0].costUsd, costFor('gpt-6-luna', 1000, 100));
+});
+
+test('a flex refusal on a call with a deadline goes to standard rather than back to the caller', async () => {
+  fake = installFakeLlm([refusedFlex(), 'ok'], flexOn({ scoring: true }));
+  const result = await complete({ system: 's', user: 'u', model: 'gpt-6-luna' }, { kind: 'score', requestId: 'r4' });
+  assert.equal(result.text, 'ok');
+  assert.equal(fake.calls[1].request.service_tier, undefined);
+});
+
+test('once a request went to standard, its later calls skip flex', async () => {
+  fake = installFakeLlm([new OpenAI.APIConnectionTimeoutError(), 'ok', 'ok again'], flexOn({ tailoring: true }));
+  await complete({ system: 's', user: 'u', model: 'gpt-6-luna' }, { kind: 'tailor', requestId: 'r5' });
+  await complete({ system: 's', user: 'u', model: 'gpt-6-luna' }, { kind: 'tailor', requestId: 'r5' });
+  assert.equal(fake.calls.length, 3);
+  assert.equal(fake.calls[2].request.service_tier, undefined);
+});
+
+test('other flex work keeps the plain rules: a ten-minute wait, a refusal left to the caller', async () => {
+  fake = installFakeLlm(['ok', refusedFlex()], flexOn({ scoring: true, tailoring: true, patienceSec: 30 }));
+  await complete({ system: 's', user: 'u', model: 'gpt-6-luna', serviceTier: 'flex' }, { kind: 'cover_letter' });
+  assert.equal(fake.calls[0].options.timeout, 600_000);
+  await assert.rejects(complete({ system: 's', user: 'u', model: 'gpt-6-luna', serviceTier: 'flex' }, { kind: 'job_enrich' }), { code: 'ai_flex_unavailable' });
+});
+
+test('with flex off for scoring, a score asked for on the standard tier stays there', async () => {
+  fake = installFakeLlm(['ok'], flexOn({ tailoring: true }));
+  await complete({ system: 's', user: 'u', model: 'gpt-6-luna' }, { kind: 'score' });
+  assert.equal(fake.calls[0].request.service_tier, undefined);
 });

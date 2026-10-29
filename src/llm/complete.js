@@ -16,6 +16,36 @@ const MAX_ATTEMPTS = 3;
 // Models already warned about having no price (catalog.js PRICES): their calls are metered at zero.
 const unpriced = new Set();
 
+// Scoring and tailoring ride flex with a deadline when the admin turns it on (Admin › AI, the
+// app's `flex`): a call flex has not answered within `patienceSec`, or one flex refuses, is sent
+// again at once on the standard tier, and the rest of that request (its requestId) goes straight
+// to standard. Other flex work is left as it was: it waits up to FLEX_TIMEOUT_MS, and a refusal is
+// its caller's to handle (enrichment, research and the like wait for capacity instead).
+const FLEX_KINDS = { scoring: ['score', 'job_requirements'], tailoring: ['tailor'] };
+export const DEFAULT_FLEX_PATIENCE_SEC = 45;
+const STANDARD_FOR_MS = 30 * 60_000;
+const onStandard = new Map(); // requestId → until when its calls skip flex
+
+/** The deadline for a call of `kind` on flex, or null when its kind keeps the plain flex rules. */
+export function flexDeadlineMs(kind, policy = models().flex || {}) {
+  const on = Object.entries(FLEX_KINDS).some(([group, kinds]) => policy[group] && kinds.includes(kind));
+  return on ? (Number(policy.patienceSec) || DEFAULT_FLEX_PATIENCE_SEC) * 1000 : null;
+}
+
+function sentToStandard(requestId) {
+  const until = requestId && onStandard.get(requestId);
+  if (until && until > Date.now()) return true;
+  if (until) onStandard.delete(requestId);
+  return false;
+}
+
+function keepOnStandard(requestId) {
+  if (!requestId) return;
+  const now = Date.now();
+  for (const [id, until] of onStandard) if (until <= now) onStandard.delete(id);
+  onStandard.set(requestId, now + STANDARD_FOR_MS);
+}
+
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -27,7 +57,8 @@ function sleep(ms) {
  * a JSON schema instead. `serviceTier: 'flex'` asks OpenAI for its half-price flex tier, which
  * answers more slowly and refuses with a 429 when it has no capacity (isFlexUnavailable); a model
  * whose family does not take the tier (providers.js flexFor) runs on the standard tier as if it
- * had not been asked.
+ * had not been asked. A scoring or tailoring call (by `meta.kind`) goes on flex with a deadline
+ * whenever the admin turned that on, asked or not (flexDeadlineMs).
  * `allowEmpty` returns an empty answer rather than throwing, for callers that treat it as a failed
  * attempt of their own.
  *
@@ -41,7 +72,8 @@ export async function complete(
 ) {
   if (!isConfigured()) throw new Error('The AI code was called before createCodemind() set it up');
   const client = clientFor(model);
-  const flex = serviceTier === 'flex' && flexFor(model);
+  const deadlineMs = flexDeadlineMs(meta.kind);
+  let flex = (serviceTier === 'flex' || deadlineMs !== null) && flexFor(model) && !(deadlineMs !== null && sentToStandard(meta.requestId));
   const started = Date.now();
   let lastErr;
   // What every answered attempt was billed for, also when its answer could not be used.
@@ -54,8 +86,8 @@ export async function complete(
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
     try {
       const response = await client.chat.completions.create(
-        buildRequest({ system, user, json, responseFormat, temperature, model, maxTokens, reasoningEffort, serviceTier }),
-        flex ? { timeout: FLEX_TIMEOUT_MS } : undefined
+        buildRequest({ system, user, json, responseFormat, temperature, model, maxTokens, reasoningEffort, serviceTier: flex ? 'flex' : undefined }),
+        flex ? { timeout: deadlineMs ?? FLEX_TIMEOUT_MS } : undefined
       );
 
       const choice = response.choices[0];
@@ -92,6 +124,15 @@ export async function complete(
     } catch (err) {
       lastErr = err;
       const status = err.status || err.statusCode;
+      // Flex too slow or full for a call with a deadline: the same call on the standard tier, now,
+      // and the rest of its request with it. Not a failed try (a timed-out call is not billed).
+      if (flex && deadlineMs !== null && (isTimeout(err) || isFlexUnavailable(err))) {
+        log().info({ model, kind: meta.kind, waitedMs: Date.now() - started, refused: isFlexUnavailable(err) }, 'flex too slow, sending on the standard tier');
+        flex = false;
+        keepOnStandard(meta.requestId);
+        attempt -= 1;
+        continue;
+      }
       // A refused flex request is not retried here: the caller leaves the work for a later cycle.
       // Nor is a flex request that timed out: each attempt already waited up to FLEX_TIMEOUT_MS.
       if (err instanceof AiError || isOutOfCredits(err) || isFlexUnavailable(err) || (flex && isTimeout(err)) || !isTransient(err) || attempt === MAX_ATTEMPTS) break;
