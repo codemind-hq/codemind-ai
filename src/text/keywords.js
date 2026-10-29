@@ -12,7 +12,7 @@ const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // building the same Unicode regex for every one was most of the quick match's time. A test without
 // the g flag keeps no state, so one RegExp serves every caller. Cleared when it grows past
 // CACHE_MAX, since postings bring free-text skills without end.
-const CACHE_MAX = 20_000;
+const CACHE_MAX = 2_000;
 const patterns = new Map();
 const spellings = new Map();
 const remember = (cache, key, make) => {
