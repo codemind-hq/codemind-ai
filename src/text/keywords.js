@@ -15,10 +15,10 @@ const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const CACHE_MAX = 2_000;
 const patterns = new Map();
 const spellings = new Map();
-const remember = (cache, key, make) => {
+const remember = (cache, key, make, max = CACHE_MAX) => {
   let value = cache.get(key);
   if (value === undefined) {
-    if (cache.size >= CACHE_MAX) cache.clear();
+    if (cache.size >= max) cache.clear();
     value = make(key);
     cache.set(key, value);
   }
@@ -47,6 +47,20 @@ function aliasesOf(term) {
   return slug ? [term, ...skillAliases(slug)] : [term];
 }
 
+// The words a spelling is made of, lowercased: the text holds every one of them when it holds the
+// spelling. Postings bring thousands of free-text skills a resume never mentions, and a plain
+// substring test turns those away before the Unicode regex reads the whole resume for each.
+const wordsOf = (spelling) => remember(words, spelling, (s) => s.toLowerCase().split(/[-_\s]+/).filter(Boolean));
+const words = new Map();
+// A few texts at a time (a resume, its flattened copy, its Skills line): each can be kilobytes.
+const lowered = new Map();
+const lowerText = (text) => remember(lowered, text, (t) => t.toLowerCase(), 16);
+
+function mentions(text, spelling) {
+  const lower = lowerText(text);
+  return wordsOf(spelling).every((word) => lower.includes(word)) && Boolean(termPattern(spelling)?.test(text));
+}
+
 /**
  * True when `keyword`, or any alias of the skill it names, appears in `text` as a whole
  * term, case-insensitively. "Java" does not match "JavaScript"; "C++", "Node.js" and
@@ -60,7 +74,7 @@ export function hasKeyword(text, keyword, seen = null) {
   if (!term || !text) return false;
   const known = seen?.get(term);
   if (known !== undefined) return known;
-  const found = spellingsOf(term).some((spelling) => termPattern(spelling)?.test(text));
+  const found = spellingsOf(term).some((spelling) => mentions(text, spelling));
   seen?.set(term, found);
   return found;
 }
