@@ -16,12 +16,19 @@ const MAX_ATTEMPTS = 3;
 // Models already warned about having no price (catalog.js PRICES): their calls are metered at zero.
 const unpriced = new Set();
 
-// Scoring and tailoring ride flex with a deadline when the admin turns it on (Admin › AI, the
-// app's `flex`): a call flex has not answered within `patienceSec`, or one flex refuses, is sent
-// again at once on the standard tier, and the rest of that request (its requestId) goes straight
-// to standard. Other flex work is left as it was: it waits up to FLEX_TIMEOUT_MS, and a refusal is
-// its caller's to handle (enrichment, research and the like wait for capacity instead).
+// Scoring and tailoring ride flex only when their caller asks for it, which is Smart Apply's
+// background work alone (owner's call, 2026-10-29): a score or tailoring someone is waiting on (a
+// job page, the ATS checker, For You) is always on the standard tier. Asked for, it rides flex
+// with a deadline while the admin has that group on (Admin › AI, the app's `flex`), and on the
+// standard tier while it is off: a call flex has not answered within `patienceSec`, or one flex
+// refuses, is sent again at once on the standard tier, and the rest of that request (its
+// requestId) goes straight to standard. Other flex work is left as it was: it waits up to
+// FLEX_TIMEOUT_MS, and a refusal is its caller's to handle (enrichment, research and the like wait
+// for capacity instead).
 const FLEX_KINDS = { scoring: ['score', 'job_requirements'], tailoring: ['tailor'] };
+
+/** Whether a call of `kind` is scoring or tailoring, whose flex the admin's switches govern. */
+export const flexGoverned = (kind) => Object.values(FLEX_KINDS).some((kinds) => kinds.includes(kind));
 export const DEFAULT_FLEX_PATIENCE_SEC = 45;
 const STANDARD_FOR_MS = 30 * 60_000;
 const onStandard = new Map(); // requestId → until when its calls skip flex
@@ -57,8 +64,9 @@ function sleep(ms) {
  * a JSON schema instead. `serviceTier: 'flex'` asks OpenAI for its half-price flex tier, which
  * answers more slowly and refuses with a 429 when it has no capacity (isFlexUnavailable); a model
  * whose family does not take the tier (providers.js flexFor) runs on the standard tier as if it
- * had not been asked. A scoring or tailoring call (by `meta.kind`) goes on flex with a deadline
- * whenever the admin turned that on, asked or not (flexDeadlineMs).
+ * had not been asked. A scoring or tailoring call (by `meta.kind`) goes on flex only when asked,
+ * and then with a deadline while the admin has that group on, on the standard tier while it is off
+ * (flexDeadlineMs).
  * `allowEmpty` returns an empty answer rather than throwing, for callers that treat it as a failed
  * attempt of their own.
  *
@@ -72,8 +80,11 @@ export async function complete(
 ) {
   if (!isConfigured()) throw new Error('The AI code was called before createCodemind() set it up');
   const client = clientFor(model);
-  const deadlineMs = flexDeadlineMs(meta.kind);
-  let flex = (serviceTier === 'flex' || deadlineMs !== null) && flexFor(model) && !(deadlineMs !== null && sentToStandard(meta.requestId));
+  const asked = serviceTier === 'flex';
+  const governed = flexGoverned(meta.kind);
+  const deadlineMs = asked && governed ? flexDeadlineMs(meta.kind) : null;
+  // Scoring and tailoring: asked, and the admin's switch on. Anything else: asked.
+  let flex = asked && flexFor(model) && (governed ? deadlineMs !== null && !sentToStandard(meta.requestId) : true);
   const started = Date.now();
   let lastErr;
   // What every answered attempt was billed for, also when its answer could not be used.
