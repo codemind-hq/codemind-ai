@@ -511,7 +511,7 @@ function withoutContactDetails(profile) {
   for (const key of [
     'contact', 'contactInfo', 'contactDetails', 'personalInfo',
     'name', 'fullName', 'firstName', 'lastName', 'email', 'phone',
-    'address', 'linkedIn', 'linkedin',
+    'address', 'location', 'linkedIn', 'linkedin', 'github', 'portfolio', 'website',
   ]) {
     delete result[key];
   }
@@ -631,7 +631,6 @@ const METHODS_BY_CAREER_FACT = {
   'Software testing': ['Automated Testing'],
   'CI/CD and software delivery': ['CI/CD', 'Release Automation'],
   'Release management': ['Release Management'],
-  'Cross-team API coordination': ['API Contracts'],
   'Production analytics and monitoring': ['Production Monitoring'],
   'Business application development': ['Enterprise Applications'],
   'Identity and authentication integration': ['Authentication Integration'],
