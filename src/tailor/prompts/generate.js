@@ -21,6 +21,7 @@ import { CAREER_FACT_PATTERNS, CAREER_SYSTEM_PATTERNS, CAREER_TECH_PATTERNS } fr
  */
 export const GENERATE_SYSTEM_PROMPT =
   'Create truthful, job-targeted resume JSON from supplied candidate facts. ' +
+  'Write experience as concrete work performed, organized around the target job responsibilities and grounded in the candidate facts. ' +
   'Do not turn job requirements or employer descriptions into claims about the candidate. ' +
   'Do not include review notices or hypothetical employment claims in the resume. ' +
   'Return only valid JSON following the specified shape.';
@@ -686,6 +687,9 @@ function collectSupportedEngineeringMethods(profile = {}, job = {}) {
  * It receives compact activity/technology fact labels extracted locally from
  * the old work bullets, never the original wording.
  */
+const MIN_ROLE_BULLETS = 3;
+const MAX_ROLE_BULLETS = 8;
+
 export function buildCompanyOnlyProfile(profile = {}, job = {}) {
   const outer = profile && typeof profile === 'object' ? profile : {};
   const source = (outer.resume && typeof outer.resume === 'object' &&
@@ -729,7 +733,12 @@ export function buildCompanyOnlyProfile(profile = {}, job = {}) {
         }
       }
       const careerFacts = condensedCareerFacts(entry, job);
-      if (careerFacts) result.careerFacts = careerFacts;
+      if (careerFacts) {
+        result.careerFacts = careerFacts;
+        // How many bullets to write for the company: as many as the source role had (the count,
+        // never the text), at least 3 and at most 8.
+        result.bulletCount = Math.min(MAX_ROLE_BULLETS, Math.max(MIN_ROLE_BULLETS, workSegments(entry).length));
+      }
       return result;
     })
     .filter((entry) => entry.company || entry.employer || entry.companyName || entry.organization);
@@ -2022,8 +2031,9 @@ company, not just the overall headline. Use supported seniority, plain wording,
 and the closest documented transferable strengths. Summary: 3-4 connected
 sentences (shorter when evidence is insufficient), relevant verified systems,
 work and outcomes; no list of tools or invented specialization. Work bullets:
-2-5 specific, truthful, non-repetitive bullets per relevant role, up to 30 words
-per bullet. Put most relevant first; do not transform iOS releases into
+for each company target its bulletCount specific, truthful, non-repetitive
+bullets when supported by enough distinct facts, up to 30 words per bullet; cover each
+company's distinct workUnits rather than stopping at the closest few. Put most relevant first; do not transform iOS releases into
 ServiceNow release upgrades. Regenerate standalone achievements from verified,
 job-relevant achievements; otherwise achievements:[]. For enterprise jobs
 omit unrelated mobile app launch/install-count achievements and portfolio links.
@@ -2034,6 +2044,31 @@ workUnits. Put matching terms and concrete evidence in the summary, skills,
 and most relevant bullet of the correct company; do not claim a missing required
 technology, platform, certification, or duty. Required-but-unsupported items
 remain gaps and must not appear as employment claims. Never pad with vague terms.
+
+EXPERIENCE WRITING: Read JOB_REQUIREMENTS and JOB_DESCRIPTION for responsibilities,
+deliverables, required tools and business problems, not just keywords. Internally
+match each relevant responsibility to a specific company's supported workUnit
+or candidate-provided work detail before writing. Lead each company's experience
+with its strongest matches, then cover its remaining distinct relevant work.
+Write each bullet as a natural account of completed work: action + concrete
+system or deliverable + supported implementation detail + purpose or documented
+outcome. Include only the parts the facts support; omit an unknown outcome
+rather than inventing an improvement. Use past tense for completed work and
+present tense only when the source explicitly describes an ongoing duty.
+Show what the person built, integrated, configured, tested, maintained or
+troubleshot. Avoid generic filler such as "responsible for", "worked on",
+"leveraged cutting-edge technology", and unsupported claims of ownership.
+Use the job's terminology where it accurately describes that work, without
+copying responsibility sentences or turning every requirement into a claim.
+For example, a requirement to integrate REST services and a fact documenting
+REST integration with a billing system can become "Integrated REST services
+with the billing system." Add authentication, retries, monitoring or measurable
+results only when supplied facts establish them for that same work item.
+Keep employers' bullets distinct; do not repeat one template across companies.
+When a company has no personal work facts, keep its achievements:[]; when
+fewer distinct facts support fewer bullets than bulletCount, return fewer
+bullets instead of padding or inventing experience. With no employment history,
+return experience:[]; job requirements alone do not establish past employment.
 
 SKILLS: Prioritize required then preferred job skills. Output technical
 categories in skillGroups [{name,skills}] and skills:[]. Categories represent
@@ -2070,8 +2105,8 @@ metadata and compact careerFacts derived from actual work descriptions.
 Old bullets, original titles, summaries and skills inventories are NOT included.
 For each company, careerFacts.workUnits groups technologies, actual tasks and
 systems detected in the SAME source work item; never combine separate workUnits
-to claim a new platform integration or duty. Generate 3-5 concrete, relevant
-bullets from those workUnits, prioritizing required job responsibilities with
+to claim a new platform integration or duty. Aim for exactly its bulletCount
+concrete bullets for each company when enough distinct facts exist, prioritizing required job responsibilities with
 real candidate evidence. Use exact job terminology only where equivalent to the
 fact; for example, call REST API integration REST web services if the work used
 REST services. A client/API integration is NOT API server development. Include
@@ -2168,6 +2203,18 @@ export function buildGeneratePrompt({
     ['employmentType', job?.employmentType],
   ].filter(([, value]) => value != null && value !== ''));
   const jobSkills = jobSkillCandidates.slice(0, 35);
+  // Preserve responsibility statements as well as skill names. Whitelist fields
+  // so internal scoring metadata does not enter the generation prompt.
+  const jobRequirements = (Array.isArray(job?.requirements) ? job.requirements : [])
+    .flatMap(requirement => {
+      const text = typeof requirement === 'string' ? requirement : requirement?.text;
+      if (typeof text !== 'string' || !text.trim()) return [];
+      return [{
+        text: text.trim().slice(0, 400),
+        ...(requirement?.priority === 'required' || requirement?.priority === 'preferred'
+          ? { priority: requirement.priority } : {}),
+      }];
+    }).slice(0, 25);
   const companySummary = String(job?.companySummary ?? '').slice(0, 650);
   const parts = [
     generateInstructions({
@@ -2186,6 +2233,7 @@ export function buildGeneratePrompt({
     ...(!companyInfoOnly ? [section('CONFIRMED_KEYWORDS', confirmedKeywords, 700)] : []),
     section('TARGET_JOB', compactJob, 700),
     section('JOB_SKILLS', jobSkills, 2000),
+    ...(jobRequirements.length ? [section('JOB_REQUIREMENTS', jobRequirements, 3000)] : []),
     section('JOB_DESCRIPTION', description, MAX_JOB_CHARS),
     section('COMPANY_SUMMARY', companySummary, 650),
     // Optional instructions supplied by the user can override presentation,

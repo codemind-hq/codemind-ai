@@ -1508,3 +1508,26 @@ test('a new resume for the job never rewrites a link: project links and link sec
   assert.ok(form.otherSections.some((o) => o.title === 'Volunteering'), 'other sections are the model\'s');
   assert.deepEqual(generatedResumeForm(source, { ...answer, otherSections: [] }).form.otherSections, [{ title: 'Links', content: 'AppStore Portfolio' }], 'kept even when the model returned none');
 });
+
+test('a new resume asks for as many bullets a company as its source role had, at least 3 and at most 8', async () => {
+  const { buildCompanyOnlyProfile } = await import('./prompts/generate.js');
+  const lines = [
+    'Integrated REST APIs between the billing service and partner systems.',
+    'Built backend services in Node.js for payment processing.',
+    'Automated release workflows with CI/CD pipelines.',
+    'Investigated production incidents using logging and telemetry.',
+    'Wrote unit tests to improve release readiness.',
+    'Designed PostgreSQL schemas for reporting.',
+    'Coordinated API contracts with backend and data engineers.',
+    'Profiled application performance and fixed slow queries.',
+    'Mentored two junior engineers.',
+    'Migrated services to Docker containers.',
+  ];
+  const role = (company, n) => ({ company, title: 'Engineer', period: '2020 - 2024', achievements: lines.slice(0, n) });
+  const { companies } = buildCompanyOnlyProfile({ experience: [role('Acme', 10), role('Beta', 5), role('Gamma', 1)] }, JOB);
+  assert.deepEqual(companies.map((c) => c.bulletCount), [8, 5, 3]);
+  assert.ok(companies.every((c) => !JSON.stringify(c).includes('billing service')), 'the count, never the text');
+  const prompt = buildGeneratePrompt({ form: { ...SOURCE, experience: [role('Acme', 10)] }, job: JOB }).user;
+  assert.match(prompt, /exactly its bulletCount/);
+  assert.match(prompt, /"bulletCount":8/);
+});
