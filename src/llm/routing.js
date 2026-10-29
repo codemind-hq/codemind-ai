@@ -27,9 +27,10 @@ export async function withFallback(call, tries, log = runtimeLog()) {
 
 // A reasoning model tailors at low effort: the rewrite is long, and medium effort runs past the
 // provider timeout. GPT-5.6 rewrote as well with reasoning off as at low effort, in half the
-// time and tokens (measured), but "none" is a level neither GPT-5 nor GPT-6 accepts. Qwen's
+// time and tokens (measured), but "none" is a level the older GPT-5 models do not accept. GPT-6
+// Luna takes it too: at low effort it wrote 2-4x the output and took longer (2026-10-28). Qwen's
 // structured output only works with thinking off. The letters and answers write at the same effort.
 export function tailorEffort(model) {
   if (providerOf(model).structuredNeedsThinkingOff) return 'minimal';
-  return /^gpt-5\.6/.test(String(model || '')) ? 'none' : 'low';
+  return /^gpt-(5\.6|6)/.test(String(model || '')) ? 'none' : 'low';
 }
