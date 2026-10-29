@@ -8,7 +8,8 @@
     ".": "./src/index.js",
     "./types.js": "./src/types.js",
     "./text/*": "./src/text/*",
-    "./resume/*": "./src/resume/*"
+    "./resume/*": "./src/resume/*",
+    "./checks/*": "./src/checks/*"
   },
   "scripts": {
     "lint": "eslint src examples",
