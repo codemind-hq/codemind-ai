@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { withFallback } from './routing.js';
+import { effortFor, tailorEffort, withFallback, writerEffort } from './routing.js';
 
 const quiet = { warn: () => {} };
 
@@ -45,4 +45,24 @@ test('withFallback rethrows when there is no distinct fallback, or the fallback 
   await assert.rejects(withFallback(fail, { model: 'a', fallbackModel: '' }, quiet), /fail:a/);
   await assert.rejects(withFallback(fail, { model: 'a', fallbackModel: 'a' }, quiet), /fail:a/);
   await assert.rejects(withFallback(fail, { model: 'a', fallbackModel: 'b' }, quiet), /fail:b/);
+});
+
+test('tailorEffort goes by the model when no level is set: none for GPT-5.6, low for the rest', () => {
+  assert.equal(tailorEffort('gpt-5.6-luna', ''), 'none');
+  assert.equal(tailorEffort('gpt-6-luna', ''), 'low');
+  assert.equal(tailorEffort('gpt-5-mini', ''), 'low');
+});
+
+test("tailorEffort takes the admin's level, put in each model family's words", () => {
+  assert.equal(tailorEffort('gpt-6-luna', 'medium'), 'medium');
+  assert.equal(tailorEffort('gpt-5.6-luna', 'low'), 'low');
+  assert.equal(effortFor('gpt-6-luna', 'minimal'), 'none', 'GPT-6 refuses minimal');
+  assert.equal(effortFor('gpt-5-mini', 'none'), 'minimal', 'the older GPT-5 models refuse none');
+  assert.equal(effortFor('gpt-5.6-luna', 'none'), 'none');
+});
+
+test("writerEffort is the writer's own level, never tailoring's", () => {
+  assert.equal(writerEffort('gpt-5.6-luna', ''), 'none');
+  assert.equal(writerEffort('gpt-5.6-luna', 'low'), 'low');
+  assert.equal(writerEffort('gpt-6-luna', 'none'), 'none');
 });

@@ -1,5 +1,5 @@
 import { fenced, jobPostingBlock } from '../../text/fence.js';
-import { tailorEffort } from '../../llm/routing.js';
+import { writerEffort } from '../../llm/routing.js';
 
 // What the letters, answers and referrals share: how a draft is written and checked, and the
 // prompt pieces they are assembled from.
@@ -35,8 +35,8 @@ export const sections = (pairs) =>
     .map(([name, body]) => `${name}:\n${body}`)
     .join('\n\n');
 
-/** Model settings for the letters and answers: the writer model of the user's tier (ai/settings.js), at the effort tailoring would use on it. */
-export const writerSettings = (model) => (model ? { model, reasoningEffort: tailorEffort(model) } : {});
+/** Model settings for the letters and answers: the writer model of the user's tier (ai/settings.js), at the writer's effort (llm/routing.js writerEffort). */
+export const writerSettings = (model) => (model ? { model, reasoningEffort: writerEffort(model) } : {});
 
 /**
  * Write once and check the draft's voice (text/voice.js). When it has problems, ask once more for a

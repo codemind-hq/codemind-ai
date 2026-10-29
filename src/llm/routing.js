@@ -30,8 +30,21 @@ export async function withFallback(call, tries, log = runtimeLog()) {
 // time and tokens (measured), but "none" is a level the older GPT-5 models do not accept. GPT-6
 // Luna tailors at low again: at low it writes 2-4x the output and takes longer, and is being tried
 // on prod Smart Apply against reasoning off (2026-10-28). Qwen's structured output only works with
-// thinking off. The letters and answers write at the same effort.
-export function tailorEffort(model) {
+// thinking off. That is the level when the admin set none (Admin › AI, the app's `tailorEffort`).
+export function tailorEffort(model, level = models().tailorEffort) {
   if (providerOf(model).structuredNeedsThinkingOff) return 'minimal';
+  if (level) return effortFor(model, level);
   return /^gpt-5\.6/.test(String(model || '')) ? 'none' : 'low';
+}
+
+/** The letters and answers: the admin's own level for them (the app's `writerEffort`), else the model's as tailoring has it. */
+export const writerEffort = (model, level = models().writerEffort) => tailorEffort(model, level || '');
+
+// No reasoning is 'none' to GPT-5.6 and GPT-6, which refuse 'minimal' (GPT-6 Luna with a 400),
+// and 'minimal' to the older GPT-5 and o-series models, which refuse 'none'. Other levels pass.
+export function effortFor(model, level) {
+  const name = String(model || '');
+  if (level === 'minimal' && /^gpt-(5\.6|6)/.test(name)) return 'none';
+  if (level === 'none' && /^(gpt-5|o\d)/.test(name) && !/^gpt-5\.6/.test(name)) return 'minimal';
+  return level;
 }
