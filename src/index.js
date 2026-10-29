@@ -29,6 +29,7 @@ export { readBatch, startBatch } from './llm/batch.js';
 // Features.
 export { parseResumeText } from './parse/service.js';
 export { extractJobRequirements, quickScoreResume, scoreVersion } from './ats/service.js';
+export { improvementSuggestions, IMPROVEMENT_KINDS } from './ats/improvements.js';
 export { fillTailoringGaps, tailorResumeForm } from './tailor/service.js';
 export { runTailoring, SCORE_ROUNDS } from './tailor/pipeline.js';
 export { estimateClause, GENERATE_STYLE, TAILOR_STYLES, tailorStyle, withEstimate } from './tailor/index.js';
