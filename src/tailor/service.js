@@ -72,7 +72,8 @@ export async function tailorResumeForm(
         throw AiError.upstream('The model did not return a rewritten resume');
       }
       // The repair round reads each line against its source role: a generated resume's roles are lined up by employer.
-      const final = await repairTailoring({ tailored, source: generated ? tailored.source : form, job, model, reasoningEffort, protectedKeywords, style, meta, serviceTier });
+      const stack = generated ? null : { sourceText, allowed: [...(confirmedKeywords || []), ...assumedKeywords, ...optionalKeywords] };
+      const final = await repairTailoring({ tailored, source: generated ? tailored.source : form, job, model, reasoningEffort, protectedKeywords, style, stack, meta, serviceTier });
       return {
         form: final.form,
         changes: final.changes,
@@ -215,7 +216,7 @@ export async function repairGapLines(tailored, form, job, lines, { confirmedKeyw
  * flagged; a failed call leaves the tailoring as it was. Recorded as the tailor prompt's
  * "+repair" version, so its cost shows on its own.
  */
-async function repairTailoring({ tailored, source, job, model, reasoningEffort, protectedKeywords, style, meta, serviceTier }) {
+async function repairTailoring({ tailored, source, job, model, reasoningEffort, protectedKeywords, style, stack, meta, serviceTier }) {
   const requirements = Array.isArray(job?.requirements) ? job.requirements : [];
   const description = job?.description || '';
   const targets = repairTargets(tailored, source, { requirements, description, style, terms: protectedKeywords });
@@ -226,7 +227,7 @@ async function repairTailoring({ tailored, source, job, model, reasoningEffort, 
       { model, reasoningEffort, system: prompt.system, user: prompt.user, json: true, responseFormat: REPAIR_RESPONSE_FORMAT, temperature: 0.2, serviceTier },
       { ...meta, kind: 'tailor', promptVersion: `${PROMPT_VERSIONS.tailor}+repair` }
     );
-    const repaired = applyRepairs(tailored, targets, data, { protectedKeywords, requirements, description, style });
+    const repaired = applyRepairs(tailored, targets, data, { protectedKeywords, requirements, description, style, stack });
     return repaired.repaired ? { ...tailored, form: repaired.form, changes: repaired.changes } : tailored;
   } catch {
     return tailored;

@@ -3,8 +3,9 @@ import { hasKeyword, keywordList, sameKeyword, uniqueKeywords } from '../text/ke
 import { structuredResumeToText } from '../resume/structuredResume.js';
 import { fillTailoringGaps, repairGapLines, tailorResumeForm } from './service.js';
 import { markAnswered } from './requirements.js';
-import { unbackedStackTerms } from './stack.js';
+import { oneNamePerStack, sameStack, unbackedStackTerms } from './stack.js';
 import { withListedSkills } from './skills.js';
+import { canonicalSkill } from '../text/dict/skills.js';
 import { skillTerm } from './terms.js';
 import { withinPageBudget } from './pages.js';
 import { GENERATE_STYLE, postingTerms, splitAssumedTerms, tailorMode, tailorStyle, withoutCuts } from './index.js';
@@ -112,6 +113,13 @@ export async function runTailoring({
     : [];
   const chipStack = unbackedStackTerms(chipSkills, originalText, confirmed);
   const mustInclude = chipSkills.filter((k) => !chipStack.some((s) => sameKeyword(s, k)));
+  // A language, cloud or platform the job asks for and the resume never shows (Go, Rust, GCP) is
+  // still a skill the job requires: score first lists every one under skills — chip or not, past
+  // the cap or not, unless switched off — one name a family ("Go", not "Go" and "Golang"), and
+  // keeps it out of the bullets, where it would claim work on that stack. It is listed after
+  // tailoring for the user to keep or remove, like any assumed term.
+  const listedStack = mode.forceAssumed ? oneNamePerStack([...chipStack, ...unbackedStackTerms(missing, originalText, confirmed)]) : [];
+  const listed = (k) => listedStack.some((s) => sameStack(s, k));
   // Score first forces the nice-to-haves in as well, after the required terms and within the
   // same cap: the job's preferred skills are a tenth of the score (ats/breakdown.js), and a
   // resume that names none of them tops out around 85 whatever else it says.
@@ -126,12 +134,17 @@ export async function runTailoring({
     ...unbackedStack,
     ...chipStack,
   ]);
-  split.leftOut = uniqueKeywords([...split.leftOut, ...chipStack]);
+  split.leftOut = uniqueKeywords([...split.leftOut, ...chipStack]).filter((k) => !listed(k));
 
   const request = { confirmedKeywords, blockedKeywords, evidence, style, instructions, model, meta, serviceTier };
   let tailored = await tailorResumeForm(form, job, { ...request, refocus, scoring: before, assumedKeywords: assumed, optionalKeywords: optional });
-  // A must-include skill the rewrite (or its skill checks) left out goes in the skills list, before anything is scored.
-  if (mustInclude.length) tailored = { ...tailored, form: withListedSkills(tailored.form, mustInclude, structuredResumeToText(tailored.form)) };
+  // A must-include skill the rewrite (or its skill checks) left out goes in the skills list, before
+  // anything is scored, and so does a stack chip the resume never shows (listedStack). Only a
+  // skill by name — the dictionary knows it, or the job lists it as one: onX's "Hunt", "Fish" and
+  // "outdoor navigation" are its products, and went under Other as skills.
+  const skillByName = (k) => Boolean(canonicalSkill(k)) || (job.skills || []).some((s) => sameKeyword(s, k));
+  const listedSkills = oneNamePerStack([...mustInclude, ...listedStack]).filter(skillByName);
+  if (listedSkills.length) tailored = { ...tailored, form: withListedSkills(tailored.form, listedSkills, structuredResumeToText(tailored.form)) };
 
   // The rewrite is judged against the source's own verdicts, so its score moves only for what it changed.
   const beforeRequirements = typeof before?.toObject === 'function' ? before.toObject().requirements : before?.requirements;
@@ -139,7 +152,7 @@ export async function runTailoring({
   let after = await quickScoreResume(tailored.form, job, meta, { prior, serviceTier });
   // A new resume for the job is the model's answer and its repair round (service.js): scored, and
   // nothing after this changes it — no cuts put back, no gap passes, no page budget.
-  if (style === GENERATE_STYLE) return { before, after, tailored, style, confirmed, candidates, assumed, assumedAll, split };
+  if (style === GENERATE_STYLE) return { before, after, tailored, style, confirmed, candidates, assumed, assumedAll: [...assumedAll, ...listedStack], split };
   // A rewrite that scores below the resume it started from lost more by cutting than it gained
   // by rewording. Put the cuts back, keep the rewording, and keep whichever scores higher.
   if (after.score < before.score && tailored.changes.some((c) => c.kind === 'removed')) {
@@ -243,7 +256,7 @@ export async function runTailoring({
         after = best.final;
       }
     }
-    return { before, after, tailored: toPageBudget(tailored), style, confirmed, candidates, assumed, assumedAll, split };
+    return { before, after, tailored: toPageBudget(tailored), style, confirmed, candidates, assumed, assumedAll: [...assumedAll, ...listedStack], split };
   }
 
   let flat = 0;
@@ -263,5 +276,5 @@ export async function runTailoring({
     }
   }
 
-  return { before, after, tailored: toPageBudget(tailored), style, confirmed, candidates, assumed, assumedAll, split };
+  return { before, after, tailored: toPageBudget(tailored), style, confirmed, candidates, assumed, assumedAll: [...assumedAll, ...listedStack], split };
 }

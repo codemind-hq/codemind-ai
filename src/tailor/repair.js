@@ -6,6 +6,7 @@ import { aiTellWords, RESUME_VOICE_RULES } from '../text/voice.js';
 import { inventsFact } from './claims.js';
 import { copiedRequirement, echoesRequirement } from './copied.js';
 import { lostDetails } from './detail.js';
+import { newStackTerms } from './stack.js';
 import { tailorMode } from './style.js';
 import { listSentences, MAX_SUMMARY_FIGURES, MIN_SUMMARY_WORDS, summaryFigures, summaryWords } from './summary.js';
 import { lower, sentencesOf } from './text.js';
@@ -134,7 +135,7 @@ Answer with every line, under its number as "id".`,
  * problems than the line it replaces, states no fact the sources lack, and keeps every job term
  * the line carried. Returns { form, changes, repaired } with `repaired` the number applied.
  */
-export function applyRepairs(tailored, targets, answer, { protectedKeywords = [], requirements = [], description = '', style } = {}) {
+export function applyRepairs(tailored, targets, answer, { protectedKeywords = [], requirements = [], description = '', style, stack = null } = {}) {
   const byId = new Map((Array.isArray(answer?.lines) ? answer.lines : []).filter((l) => Number.isInteger(l?.id) && typeof l.text === 'string').map((l) => [l.id, cleanListItem(l.text)]));
   const form = { ...tailored.form, experience: tailored.form.experience.map((e) => ({ ...e, achievements: [...e.achievements] })) };
   const changes = (tailored.changes || []).map((c) => ({ ...c }));
@@ -149,7 +150,11 @@ export function applyRepairs(tailored, targets, answer, { protectedKeywords = []
     const keepsTerms = !protectedKeywords.some((k) => hasKeyword(target.text, k) && !hasKeyword(text, k));
     // A bullet keeps its figures and names (detail.js); a summary may let figures go, since the bullets carry them.
     const losesDetails = target.role !== null && lostDetails(target.text, text).length > 0;
-    if (!better || !keepsTerms || losesDetails || (tailored.sources && inventsFact(text, tailored.sources))) continue;
+    // A language, cloud or platform the line did not name, the resume never shows and the member did
+    // not confirm or leave on (stack.js): a reworded line wrote "Go" into a role that used Elixir.
+    // `stack` is { sourceText, allowed }, none for a new resume for the job (generated.js).
+    const newStack = stack && newStackTerms(text, { before: target.text, sourceText: stack.sourceText, confirmed: stack.allowed }).length > 0;
+    if (!better || !keepsTerms || losesDetails || newStack || (tailored.sources && inventsFact(text, tailored.sources))) continue;
     if (target.role === null) {
       form.summary = text;
     } else {

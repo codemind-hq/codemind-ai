@@ -80,6 +80,14 @@ test('a language, cloud or container platform the resume never shows is never wr
   assert.deepEqual(newStackTerms('Let go of the legacy queue and moved to Azure Service Bus.', { sourceText: source }), [], '"go" the verb is not Go');
 });
 
+test("score first lists a stack chip the resume never shows under skills, once a family", async () => {
+  const { oneNamePerStack, sameStack } = await import('./stack.js');
+  assert.deepEqual(oneNamePerStack(['Go', 'Golang', 'Google Cloud', 'GCP', 'K8s']), ['Go', 'GCP', 'Kubernetes']);
+  assert.ok(sameStack('Go', 'Golang'));
+  assert.ok(!sameStack('Go', 'Rust'));
+  assert.ok(!sameStack('NestJS', 'NestJS'), 'not a stack term');
+});
+
 test('the same work said twice is said once; two pieces of work that read alike stay', async () => {
   const { withoutRepeatedBullets } = await import('./detail.js');
   const twice = 'Built multi-stage CI/CD with immutable artifact patterns, semantic versioning and multi-environment Docker image promotion.';

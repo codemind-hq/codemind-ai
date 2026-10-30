@@ -825,6 +825,10 @@ test('a repair stands only when it is better and no less true', () => {
   const noBetter = applyRepairs(tailored, targets, answer('Results-driven engineer building data services.', 'Leveraged Python to build seamless data services on AWS.'), { protectedKeywords });
   assert.equal(noBetter.repaired, 0, 'a fix with as many problems is refused');
   assert.equal(applyRepairs(tailored, targets, null, { protectedKeywords }).repaired, 0, 'a shapeless answer changes nothing');
+  const stack = { sourceText: 'Python data services on AWS.', allowed: [] };
+  const newGo = applyRepairs(tailored, targets, answer('', 'Built Python and Go data services on AWS.'), { protectedKeywords, stack });
+  assert.equal(newGo.repaired, 0, 'a fix that brings in Go, which the resume never shows, is refused');
+  assert.equal(applyRepairs(tailored, targets, answer('', 'Built Python and Go data services on AWS.'), { protectedKeywords, stack: { ...stack, allowed: ['Golang'] } }).repaired, 1, 'confirmed under another name, it stands');
   assert.deepEqual(tailored.form.experience[0].achievements, ['Leveraged Python to build robust data services on AWS.'], 'the tailoring passed in is never mutated');
 });
 

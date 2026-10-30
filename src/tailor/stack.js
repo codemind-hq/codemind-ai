@@ -35,6 +35,23 @@ const familyOf = (term) => FAMILIES.find((f) => f.names.some((n) => n.toLowerCas
 /** True when `term` names a language, cloud or container platform (stack.js FAMILIES). */
 export const isStackTerm = (term) => Boolean(familyOf(term));
 
+/** True when `a` and `b` name the same language, cloud or platform ("Go", "Golang"). */
+export const sameStack = (a, b) => {
+  const family = familyOf(a);
+  return Boolean(family) && family === familyOf(b);
+};
+
+/** The stack terms of `terms`, one per family under its first name ("Golang" is Go); the rest as they are. */
+export function oneNamePerStack(terms) {
+  const seen = new Set();
+  return (terms || []).flatMap((term) => {
+    const name = familyOf(term)?.names[0] ?? term;
+    if (seen.has(name.toLowerCase())) return [];
+    seen.add(name.toLowerCase());
+    return [name];
+  });
+}
+
 /**
  * The stack terms of `terms` that `sourceText` (the resume as uploaded and as a form) never
  * names under any of their names, and the member did not confirm: the ones no rewrite may write in.
