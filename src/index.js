@@ -28,6 +28,7 @@ export { readBatch, startBatch } from './llm/batch.js';
 
 // Features.
 export { parseResumeText } from './parse/service.js';
+export { reviewResume } from './resume/review.js';
 export { extractJobRequirements, quickScoreResume, scoreVersion } from './ats/service.js';
 export { improvementSuggestions, IMPROVEMENT_KINDS } from './ats/improvements.js';
 export { fillTailoringGaps, tailorResumeForm } from './tailor/service.js';
