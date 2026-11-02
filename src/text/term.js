@@ -24,6 +24,12 @@ export function termFromTitle(title, { now = new Date() } = {}) {
   return { season, year };
 }
 
+/** Whether a season's term has begun by `now`: an internship for it is no longer one to apply to. */
+export function termStarted({ season, year }, { now = new Date() } = {}) {
+  const thisYear = now.getUTCFullYear();
+  return year < thisYear || (year === thisYear && now.getUTCMonth() > STARTS[season]);
+}
+
 /** "Summer 2027", "Fall 2026"; a bare year as it is. */
 export function termLabel(term) {
   if (!term?.year) return '';

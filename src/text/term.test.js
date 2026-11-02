@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { termFromSlug, termFromTitle, termLabel, termSlug } from './term.js';
+import { termFromSlug, termFromTitle, termLabel, termSlug, termStarted } from './term.js';
 
 const now = new Date('2026-11-02T00:00:00Z');
 
@@ -30,4 +30,13 @@ test('labels and slugs', () => {
   assert.equal(termSlug({ season: '', year: 2026 }), '');
   assert.deepEqual(termFromSlug('summer-2027'), { season: 'summer', year: 2027 });
   assert.equal(termFromSlug('summer'), null);
+});
+
+test('a term has begun once its first month is past', () => {
+  const now = new Date('2026-11-02T12:00:00Z');
+  assert.equal(termStarted({ season: 'summer', year: 2026 }, { now }), true);
+  assert.equal(termStarted({ season: 'fall', year: 2026 }, { now }), true);
+  assert.equal(termStarted({ season: 'winter', year: 2026 }, { now }), false);
+  assert.equal(termStarted({ season: 'summer', year: 2027 }, { now }), false);
+  assert.equal(termStarted({ season: 'spring', year: 2025 }, { now }), true);
 });
