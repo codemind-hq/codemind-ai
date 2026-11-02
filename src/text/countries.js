@@ -460,15 +460,29 @@ export function regionNameFromCode(code) {
 // countryNameFromCode under the name the sources import it by (sources/aggregators/hiringcafe.js).
 export { countryNameFromCode as countryFromCode };
 
+// "Global", "Anywhere", "International" and "Any location" say where a job is only as a whole place: in
+// "Global Payments", "Orlando International Airport", "Anywhere in the U.S." or "US - Remote (Any
+// location)" they do not open it to the world. Written out, as these are, the wording stands anywhere.
+const WORLDWIDE_STATED = /(^|[^a-z])worldwide(?![a-z])|(^|[^a-z])(work|working|remote|remotely)( from)? anywhere(?![a-z])(?! in (?!the world))/;
+const WORLDWIDE_PLACE = /^(global|globally|anywhere|international|any location|any country)$/;
+const REMOTE_WORDS = /(^|[^a-z])(fully |100% )?remote(ly)?(?![a-z])/g;
+
+/** Whether folded text says a job is open everywhere: in so many words, or as one whole site of a list ("Remote - Global; USA"). */
+function namesWorldwide(text) {
+  if (WORLDWIDE_STATED.test(text)) return true;
+  return text.split(/[|/;\n]/).some((site) => WORLDWIDE_PLACE.test(site.replace(REMOTE_WORDS, ' ').replace(/[^a-z ]+/g, ' ').replace(/\s+/g, ' ').trim()));
+}
+
 export function extractCountries(...texts) {
   const text = fold(texts.filter(Boolean).map(String).join(' | '));
   if (!text.trim()) return [];
+  const worldwide = namesWorldwide(text);
 
   const found = [];
   let remaining = text;
   for (const [name, pattern] of RULES) {
     if (pattern.test(remaining)) {
-      found.push(name);
+      if (name !== 'Worldwide' || worldwide) found.push(name);
       // Remove the matched alias so a region name can't also feed a country rule.
       remaining = remaining.replace(new RegExp(pattern.source, 'gi'), '$1 ');
     }

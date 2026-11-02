@@ -144,3 +144,28 @@ test('placeMentioned reads any alias of the place', () => {
   assert.ok(placeMentioned('Spain', 'Ubicación: Espana'));
   assert.ok(!placeMentioned('Mexico', 'Albuquerque, New Mexico'));
 });
+
+test('Worldwide takes a whole place or explicit wording, never a word in passing', () => {
+  const worldwide = (...texts) => extractCountries(...texts).includes('Worldwide');
+  for (const place of ['Worldwide', 'Global', 'Anywhere', 'International', 'Any Location / Remote', 'Remote - Global; USA', 'Remote (Anywhere)', 'Fully Remote - Global', 'Denver / Worldwide']) assert.equal(worldwide(place), true, place);
+  assert.equal(worldwide('Remote', 'QA Engineer (Remote-Worldwide)'), true);
+  assert.equal(worldwide('Remote', 'Engineer, work from anywhere'), true);
+  assert.equal(worldwide('Remote', 'Engineer, remote anywhere in the world'), true);
+  // In a title or a place's name, or held to a country, they say nothing of who may apply.
+  for (const [location, title] of [
+    ['Toronto, ON, CA', 'Software Engineer, Global Payments Technology'],
+    ['Toronto, Canada', 'Senior Software Engineer, Backend - International'],
+    ['Orlando, FL, United States', 'To-Go - Orlando International Airport'],
+    ['MUFG Global Service Private Ltd. - Bengaluru (BCIT)', 'Java Developer'],
+    ['Philippines-Bonifacio Global City-Taguig', 'Engineer'],
+    ['Sydney, International House, 3 Sussex St', 'Cloud Architect'],
+    ['US - Remote (Any location)', 'Developer'],
+    ['Anywhere, US', 'Platform Engineer'],
+    ['India (Anywhere)', 'Go To Market'],
+    ['Anywhere in France, Belgium, Spain', 'Platform Engineer'],
+    ['Any location, United States / Any location, Canada', 'Engineer'],
+    ['Remote', 'Security Engineer - Remote (Anywhere in the U.S.)'],
+    ['International - Germany', 'Network Administrator'],
+  ]) assert.equal(worldwide(location, title), false, `${title} | ${location}`);
+  assert.deepEqual(extractCountries('US - Remote (Any location)'), ['United States']);
+});
