@@ -29,6 +29,10 @@ const CASES = [
   // A req number in brackets is not a level.
   ['Software Engineer (2024-1138)', null],
   ['Platform Engineer [REQ-3001]', null],
+  // The one who runs the programme is not an intern.
+  ['Internship Program Manager', null],
+  ['Intern Coordinator', null],
+  ['University Recruiter, Interns', null],
   // An intern posting is an intern posting whatever else it says.
   ['Senior Engineering Intern', 'intern'],
   // A posting open at several rungs is read at its lowest.

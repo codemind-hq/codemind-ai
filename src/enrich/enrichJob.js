@@ -1,6 +1,6 @@
 import { complete } from '../llm/index.js';
 import { models } from '../runtime.js';
-import { ENRICH_GROUPS, ENRICHMENT_RESPONSE_FORMAT, ENRICHMENT_RESPONSE_FORMAT_WITHOUT_SALARY, REQUIRED_GROUPS } from './schema.js';
+import { ENRICH_GROUPS, REQUIRED_GROUPS, responseFormatWithout } from './schema.js';
 import { PROMPT_VERSION, SYSTEM_PROMPT, buildPostingText, buildUserPrompt } from './prompt.js';
 import { crossGroupErrors, validateEnrichment } from './validate.js';
 
@@ -28,9 +28,15 @@ export function salaryKept(job) {
   return KEPT_SALARY_SOURCES.has(job.fieldSources?.salary) && (job.salaryMin != null || job.salaryMax != null);
 }
 
-/** The groups a job's request leaves out: its salary, when enrichment would keep the one it has. */
+/** Whether the posting is for an intern or a new graduate (ingest's title rules), so its terms are worth reading. */
+export const isStudentPosting = (job) => job.seniority === 'intern' || job.newGrad === true || /\bintern(?:ship)?s?\b|\bco-?op\b/i.test(String(job.title || ''));
+
+/**
+ * The groups a job's request leaves out: its salary, when enrichment would keep the one it has, and
+ * the internship terms of any posting that is not for a student.
+ */
 export function unaskedGroups(job) {
-  return salaryKept(job) ? ['salary'] : [];
+  return [...(salaryKept(job) ? ['salary'] : []), ...(isStudentPosting(job) ? [] : ['internship'])];
 }
 
 /** The request for one attempt at one job; also the body of a Batch API line (batch.js). */
@@ -38,7 +44,7 @@ export function enrichmentRequest(job, step, failedChecks = []) {
   return {
     system: SYSTEM_PROMPT,
     user: buildUserPrompt(buildPostingText(job), step.withFeedback ? failedChecks : []),
-    responseFormat: unaskedGroups(job).includes('salary') ? ENRICHMENT_RESPONSE_FORMAT_WITHOUT_SALARY : ENRICHMENT_RESPONSE_FORMAT,
+    responseFormat: responseFormatWithout(unaskedGroups(job)),
     model: step.model,
     reasoningEffort: step.reasoningEffort,
     // Steadiest answers from models that take a temperature (ignored for GPT-5).

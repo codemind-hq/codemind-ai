@@ -12,7 +12,7 @@ export const PROMPT_VERSIONS = {
   referral: 'referral.v1',
   founderIntro: 'founderIntro.v1',
   jobRequirements: 'jobRequirements.v4',
-  jobEnrich: 'jobEnrich.v16',
+  jobEnrich: 'jobEnrich.v17',
   screeningInterpret: 'screeningInterpret.v1',
   resumeReview: 'resumeReview.v1',
 };

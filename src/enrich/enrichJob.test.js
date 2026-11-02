@@ -1,7 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { describeAttempt, enrichJob, failedChecksOf, resultFrom, settledAsOther, validateAnswer } from './enrichJob.js';
-import { ENRICHMENT_RESPONSE_FORMAT, ENRICHMENT_RESPONSE_FORMAT_WITHOUT_SALARY } from './schema.js';
+import { ENRICHMENT_RESPONSE_FORMAT, ENRICHMENT_RESPONSE_FORMAT_WITHOUT_SALARY, responseFormatWithout } from './schema.js';
+
+// A senior posting is not asked for the internship group; an intern's is (enrichJob.js unaskedGroups).
+const PLAIN_FORMAT = responseFormatWithout(['internship']);
 import { PROMPT_VERSION, buildPostingText, buildUserPrompt } from './prompt.js';
 
 const JOB = {
@@ -71,7 +74,8 @@ test('a valid first answer is used as is: one call to the main model', async () 
   const [{ request, meta }] = calls;
   assert.equal(request.model, 'nano');
   assert.equal(request.reasoningEffort, 'minimal');
-  assert.equal(request.responseFormat, ENRICHMENT_RESPONSE_FORMAT);
+  assert.equal(request.responseFormat, PLAIN_FORMAT);
+  assert.equal('internship' in PLAIN_FORMAT.json_schema.schema.properties, false);
   assert.equal(request.allowEmpty, true);
   assert.equal(request.user, buildUserPrompt(buildPostingText(JOB)), 'the posting, fenced as data');
   assert.deepEqual(meta, { kind: 'job_enrich', promptVersion: PROMPT_VERSION, attempt: 1, ref: 'job-1' });
@@ -84,7 +88,7 @@ test('a job whose salary is settled is not asked for one, and its answer is comp
   const result = await enrichJob(settled, { call, attempts: PLAN });
 
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].request.responseFormat, ENRICHMENT_RESPONSE_FORMAT_WITHOUT_SALARY);
+  assert.equal(calls[0].request.responseFormat, responseFormatWithout(['salary', 'internship']));
   assert.equal('salary' in ENRICHMENT_RESPONSE_FORMAT_WITHOUT_SALARY.json_schema.schema.properties, false);
   assert.equal(ENRICHMENT_RESPONSE_FORMAT_WITHOUT_SALARY.json_schema.schema.required.includes('salary'), false);
   assert.equal(result.status, 'done');
@@ -96,7 +100,12 @@ test('a job whose salary is settled is not asked for one, and its answer is comp
   // A salary the model may still replace is asked for.
   const { call: aiCall, calls: aiCalls } = fakeModel(good());
   await enrichJob({ ...settled, fieldSources: { salary: 'ai' } }, { call: aiCall, attempts: PLAN });
-  assert.equal(aiCalls[0].request.responseFormat, ENRICHMENT_RESPONSE_FORMAT);
+  assert.equal(aiCalls[0].request.responseFormat, PLAIN_FORMAT);
+  // An intern posting is asked for its terms, with the whole schema.
+  const { call: internCall, calls: internCalls } = fakeModel(good());
+  await enrichJob({ ...JOB, title: 'Software Engineer Intern (Summer 2027)', seniority: 'intern' }, { call: internCall, attempts: PLAN });
+  assert.equal(internCalls[0].request.responseFormat, ENRICHMENT_RESPONSE_FORMAT);
+  assert.equal(internCalls[0].request.responseFormat.json_schema.schema.required.includes('internship'), true);
 });
 
 test('a failed answer is retried with the main model, told which checks failed', async () => {

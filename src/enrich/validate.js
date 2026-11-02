@@ -432,6 +432,26 @@ const CHECKS = {
   // Domain words for keyword search (jobs/keywords.js). Nothing here fails the group: a tag the
   // posting does not contain, or one too generic to rank anything, is dropped, so search never
   // matches a word the posting never said.
+  internship(data, { posting, fail }) {
+    const month = (value, field) => {
+      if (value === null) return null;
+      if (!/^20[2-3]\d-(0[1-9]|1[0-2])$/.test(value)) {
+        fail('schema', `internship.${field} must be a month, YYYY-MM, got ${value}`);
+        return null;
+      }
+      return value;
+    };
+    const from = month(data.graduationFrom, 'graduationFrom');
+    const to = month(data.graduationTo, 'graduationTo');
+    if (from && to && to < from) fail('out_of_range', `internship.graduationTo ${to} is before graduationFrom ${from}`);
+    const weeks = data.durationWeeks;
+    if (weeks !== null && (weeks < 1 || weeks > 104)) fail('out_of_range', `internship.durationWeeks must be 1-104, got ${weeks}`);
+    const stated = from || to || weeks !== null || data.enrollmentRequired !== 'unknown';
+    // Every stated value rests on a quote from the posting; none stated, no quote.
+    const evidence = stated ? verifiedQuote(data.evidence, posting, fail, 'internship.evidence', true) : null;
+    return { graduationFrom: from, graduationTo: to, enrollmentRequired: data.enrollmentRequired, durationWeeks: weeks, evidence };
+  },
+
   keywords(data, { rawPosting, value }) {
     return {
       tags: cleanKeywords(data.tags, {

@@ -12,6 +12,17 @@
 // "Member of Technical Staff" is a job title, not a staff level. The one table for the title's
 // level: enrichment's fallback reads it too (enrich/validate.js), so a job is not given one level
 // by ingest and another by a model that answered nothing.
+// A posting about running the internship programme, not joining it: the one who manages, coordinates
+// or recruits the interns is staff, and the intern rule stands down for it.
+const INTERN_STAFF = /\b(intern(?:ship)?s?)\s+(?:program(?:me)?\s+)?(?:manager|coordinator|lead|director|specialist|recruit(?:er|ing))\b|\b(?:manager|coordinator|director|recruiter)(?:,|\s+(?:of|for))?\s+(?:the\s+)?intern(?:ship)?s?\b/i;
+
+// A posting for someone finishing their degree: narrower than the junior rule it sits inside
+// ("graduate" alone also names a UK graduate scheme's second year), for the new-grad page and tab.
+const NEW_GRAD = /\b(?:new|recent|university|college|campus)[\s-]?grad(?:uate)?s?\b|\bgraduate\s+(?:program(?:me)?|scheme|rotation(?:al)?\s+program(?:me)?|software|engineer|developer|analyst|hire)\b|\bearly[\s-]?career\b|\bentry[\s-]?level\b|\bcampus\s+hire\b|\bclass\s+of\s+20[2-3]\d\b/i;
+
+/** True when the title is for a new graduate ("New Grad", "Graduate Software Engineer", "Early Career"). */
+export const isNewGradTitle = (title) => NEW_GRAD.test(String(title || '').replace(/\([^)]*\)|\[[^\]]*\]/g, ' '));
+
 const RULES = [
   ['intern', /\b(intern|interns|internship|co-?op|working student|placement student|summer analyst)\b/i],
   // "JR-217146" is a requisition number, not a junior: "jr" followed by a dash and digits says nothing.
@@ -56,7 +67,9 @@ export function seniorityFromTitle(title) {
   if (!text) return null;
 
   // "Senior" beside "Staff" or "Principal" is the higher of the two, which the order above gives.
+  const internStaff = INTERN_STAFF.test(text);
   for (const [level, pattern] of RULES) {
+    if (level === 'intern' && internStaff) continue;
     if (pattern.test(text)) return level;
   }
   const range = text.match(NUMERAL_RANGE);

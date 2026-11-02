@@ -392,7 +392,23 @@ Rules:
 Example:
 "We are a Series B fintech building real-time payment rails. You will own our fraud detection service, a PCI-compliant Go platform in Berlin, and join the on-call rotation."
 -> ["fintech", "payments", "real-time", "fraud detection", "pci"]
-Not "go" or "postgres" (technologies), "series b" (the company field), "berlin" (the location field), "on-call" (a duty, not a domain).`;
+Not "go" or "postgres" (technologies), "series b" (the company field), "berlin" (the location field), "on-call" (a duty, not a domain).
+
+INTERNSHIP
+
+Only for an internship, co-op or new-graduate posting; the field may be absent from the schema for other postings. Who the posting says it is for:
+
+graduationFrom, graduationTo:
+The graduation dates the posting accepts, as months "YYYY-MM". "Graduating between December 2027 and June 2028" -> "2027-12", "2028-06". "Class of 2027" -> "2027-01", "2027-12". "Expected graduation in 2028 or later" -> "2028-01", null. null when not stated. A start date is not a graduation date.
+
+enrollmentRequired:
+yes when the candidate must be enrolled in a degree programme during or after the internship ("must be returning to school", "currently pursuing a degree"); no when the posting says it is open to graduates; unknown otherwise.
+
+durationWeeks:
+The internship's length in weeks when stated ("12-week program" -> 12, "3 months" -> 13, "6 months" -> 26). null when not stated.
+
+evidence:
+An exact quote supporting every non-null value and any enrollmentRequired other than unknown. null when nothing is stated.`;
 
 /**
  * The posting as the model sees it; quotes are checked against this same text. Mis-decoded

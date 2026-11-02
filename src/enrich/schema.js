@@ -5,7 +5,7 @@ import { z } from 'zod';
 // on its own (a job that never gets a fully valid answer keeps the groups that passed). The
 // allowed values below are read from the JSON schema, and schema.test.js keeps the two in step.
 
-export const ENRICH_GROUPS = ['category', 'workplace', 'location', 'salary', 'role', 'skills', 'conditions', 'company', 'keywords'];
+export const ENRICH_GROUPS = ['category', 'workplace', 'location', 'salary', 'role', 'skills', 'conditions', 'company', 'keywords', 'internship'];
 
 // Without these two a job is not shown; the other groups are left blank when they fail.
 export const REQUIRED_GROUPS = ['category', 'workplace'];
@@ -14,7 +14,7 @@ export const REQUIRED_GROUPS = ['category', 'workplace'];
 // submitted under the previous prompt is still collected and re-validated under this one, and must
 // not fail (and be retried, at a cost) for a field it was never asked for. A field added to a group
 // that was already asked for is defaulted in groupSchemas instead (`added` below).
-export const GROUP_DEFAULTS = { keywords: { tags: [] } };
+export const GROUP_DEFAULTS = { keywords: { tags: [] }, internship: { graduationFrom: null, graduationTo: null, enrollmentRequired: 'unknown', durationWeeks: null, evidence: null } };
 
 // Subcategories per primary category. Strict mode cannot tie them to the primary, so the schema
 // allows any of them and validate.js drops one that belongs to another category.
@@ -175,8 +175,23 @@ export const JOB_ENRICHMENT_SCHEMA = {
       required: ['tags'],
       additionalProperties: false,
     },
+
+    // Who an internship or new-grad posting is for, as it states it: asked only of those postings
+    // (enrichJob.js unaskedGroups), so no other job pays for it. The minimum degree is conditions.degree.
+    internship: {
+      type: 'object',
+      properties: {
+        graduationFrom: { type: ['string', 'null'] },
+        graduationTo: { type: ['string', 'null'] },
+        enrollmentRequired: { type: 'string', enum: TRISTATE },
+        durationWeeks: { type: ['integer', 'null'] },
+        evidence: { type: ['string', 'null'] },
+      },
+      required: ['graduationFrom', 'graduationTo', 'enrollmentRequired', 'durationWeeks', 'evidence'],
+      additionalProperties: false,
+    },
   },
-  required: ['category', 'workplace', 'location', 'salary', 'role', 'skills', 'conditions', 'company', 'keywords'],
+  required: ['category', 'workplace', 'location', 'salary', 'role', 'skills', 'conditions', 'company', 'keywords', 'internship'],
   additionalProperties: false,
 };
 
@@ -186,20 +201,26 @@ export const ENRICHMENT_RESPONSE_FORMAT = {
   json_schema: { name: 'job_enrichment', strict: true, schema: JOB_ENRICHMENT_SCHEMA },
 };
 
-// A job whose salary is settled before the model reads it (enrich/apply.js salaryKept) is sent this
-// instead: the salary group left out is output the model is not paid to write.
-const { salary: _salary, ...WITHOUT_SALARY } = JOB_ENRICHMENT_SCHEMA.properties;
-export const ENRICHMENT_RESPONSE_FORMAT_WITHOUT_SALARY = {
-  type: 'json_schema',
-  json_schema: {
-    name: 'job_enrichment',
-    strict: true,
-    schema: { ...JOB_ENRICHMENT_SCHEMA, properties: WITHOUT_SALARY, required: JOB_ENRICHMENT_SCHEMA.required.filter((group) => group !== 'salary') },
-  },
-};
+// The format with some groups left out: a job whose salary is settled before the model reads it
+// (enrich/apply.js salaryKept), or one that is no internship, is not charged for output it does not
+// need. One format per set of left-out groups, built once.
+const formats = new Map();
+export function responseFormatWithout(unasked = []) {
+  const key = [...unasked].sort().join(',');
+  if (!key) return ENRICHMENT_RESPONSE_FORMAT;
+  if (!formats.has(key)) {
+    const properties = Object.fromEntries(Object.entries(JOB_ENRICHMENT_SCHEMA.properties).filter(([group]) => !unasked.includes(group)));
+    formats.set(key, {
+      type: 'json_schema',
+      json_schema: { name: 'job_enrichment', strict: true, schema: { ...JOB_ENRICHMENT_SCHEMA, properties, required: JOB_ENRICHMENT_SCHEMA.required.filter((group) => !unasked.includes(group)) } },
+    });
+  }
+  return formats.get(key);
+}
+export const ENRICHMENT_RESPONSE_FORMAT_WITHOUT_SALARY = responseFormatWithout(['salary']);
 
 // What a group the model was not asked for stands for in its answer.
-export const UNASKED_GROUPS = { salary: { min: null, max: null, currency: null, period: null, evidence: null } };
+export const UNASKED_GROUPS = { salary: { min: null, max: null, currency: null, period: null, evidence: null }, internship: GROUP_DEFAULTS.internship };
 
 const allowed = (group, field) => JOB_ENRICHMENT_SCHEMA.properties[group].properties[field].enum;
 const nullableEnum = (values) => z.enum(values.filter((value) => value !== null)).nullable();
@@ -258,6 +279,13 @@ export const groupSchemas = {
     evidence: text(),
   }),
   keywords: z.object({ tags: z.array(z.string()) }),
+  internship: z.object({
+    graduationFrom: text(),
+    graduationTo: text(),
+    enrollmentRequired: z.enum(TRISTATE),
+    durationWeeks: z.number().int().nullable(),
+    evidence: text(),
+  }),
 };
 
 const emptyOf = (property) => {
