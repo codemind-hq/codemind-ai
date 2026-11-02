@@ -24,6 +24,9 @@ export function termFromTitle(title, { now = new Date() } = {}) {
   return { season, year };
 }
 
+/** The first day of the month a season's term starts. */
+export const termStart = ({ season, year }) => new Date(Date.UTC(year, STARTS[season] ?? 0, 1));
+
 /** Whether a season's term has begun by `now`: an internship for it is no longer one to apply to. */
 export function termStarted({ season, year }, { now = new Date() } = {}) {
   const thisYear = now.getUTCFullYear();
