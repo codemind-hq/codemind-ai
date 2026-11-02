@@ -8,6 +8,7 @@ import { models } from '../runtime.js';
 import { interpretScoreAnswer } from './interpret.js';
 import { buildScorePrompt } from './prompt.js';
 import { pickRequirementItems } from './requirements.js';
+import { isStudentPosting } from '../enrich/enrichJob.js';
 import { JOB_REQUIREMENTS_RESPONSE_FORMAT, SCORE_RESPONSE_FORMAT } from './schema.js';
 
 // The scoring calls: a posting's requirements read once, and a resume judged against them.
@@ -65,7 +66,9 @@ export async function quickScoreResume(resume, job, meta = {}, { prior = null, s
     if (prompt.requirements.length && prompt.requirements.filter((_, id) => answered.has(id)).length < prompt.requirements.length / 2) {
       throw AiError.upstream('The model did not judge the requirements');
     }
-    const result = interpretScoreAnswer(data, { job, resume: form, resumeText: prompt.resumeText, requirements: prompt.requirements, supportedYears: form ? supportedYears(form) : null, prior });
+    // The years a resume supports cap a requirement's verdict (verdicts.js yearsCap), except on an intern
+    // or new-grad posting: it asks for a degree in progress, and its "2+ years" lines are the template's.
+    const result = interpretScoreAnswer(data, { job, resume: form, resumeText: prompt.resumeText, requirements: prompt.requirements, supportedYears: form && !isStudentPosting(job || {}) ? supportedYears(form) : null, prior });
     // Nothing to judge at all would otherwise read as 0.
     if (result.score === null) throw AiError.upstream('The model did not return a complete score');
     return { ...result, model };

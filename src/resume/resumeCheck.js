@@ -24,8 +24,10 @@ const HEADINGS = {
   education: /^(?:education|academic\s+background|academics)$/,
   skills: /^(?:(?:technical|core|key|relevant|professional)\s+)?(?:skills|competencies|proficiencies)$|^(?:technologies|tech\s+stack|tools|technical\s+expertise)$/,
   summary: /^(?:(?:professional|career|executive)\s+)?(?:summary|profile|objective|overview)$|^about(?:\s+me)?$/,
+  // Projects are read as lines of work beside the roles: a student's resume shows its work there.
+  projects: /^(?:(?:selected|personal|side|academic|technical|key|notable|open[\s-]source)\s+)?projects?$|^portfolio$/,
   other:
-    /^(?:(?:selected|personal|side)\s+)?projects?$|^(?:certifications?|licenses?|awards|honou?rs|achievements|publications|languages|interests|volunteer(?:ing|\s+experience)?|references|activities|leadership|courses|training)$/,
+    /^(?:certifications?|licenses?|awards|honou?rs|achievements|publications|languages|interests|volunteer(?:ing|\s+experience)?|references|activities|leadership|courses|training)$/,
 };
 const HEADING_MAX = 40;
 const HEADING_JOINS = /\s*(?:\/|&|\+|,|\band\b)\s*/;
@@ -93,6 +95,7 @@ function readLines(text) {
     }, []);
   const sections = {
     experience: [],
+    projects: [],
     education: [],
     skills: [],
     summary: [],
@@ -142,7 +145,8 @@ export function checkResumeText(text, { country = '' } = {}) {
   const totalWords = words(body);
 
   // Lines of work: the experience section's, or every section's when the resume has no such heading.
-  const pool = found.has('experience') ? sections.experience : [...sections.top, ...sections.experience, ...sections.other];
+  // Lines of work: the experience and projects sections', or every section's when the resume has neither heading.
+  const pool = found.has('experience') || found.has('projects') ? [...sections.experience, ...sections.projects] : [...sections.top, ...sections.experience, ...sections.other];
   const achievements = pool.map((l) => l.replace(BULLET, '')).filter((l) => words(l) >= ACHIEVEMENT_WORDS && !DATE_RANGE.test(l) && !EMAIL.test(l));
   const withNumbers = achievements.filter(quantified);
   const withVerbs = achievements.filter(opensWithVerb);
@@ -366,6 +370,9 @@ export function checkResumeText(text, { country = '' } = {}) {
       words: totalWords,
       achievements: achievements.length,
       withNumbers: withNumbers.length,
+      // Lines of work under a projects heading, and whether the resume is a student's: projects and education, no roles yet.
+      projects: sections.projects.filter((l) => words(l.replace(BULLET, '')) >= ACHIEVEMENT_WORDS).length,
+      student: !found.has('experience') && found.has('projects') && found.has('education'),
       skills: skills.slice(0, 40).map(skillLabel),
     },
   };
