@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { termFromSlug, termFromTitle, termLabel, termSlug, termStarted } from './term.js';
+import { nextTermYear, termFromSlug, termFromTitle, termLabel, termSlug, termStarted } from './term.js';
 
 const now = new Date('2026-11-02T00:00:00Z');
 
@@ -39,4 +39,36 @@ test('a term has begun once its first month is past', () => {
   assert.equal(termStarted({ season: 'winter', year: 2026 }, { now }), false);
   assert.equal(termStarted({ season: 'summer', year: 2027 }, { now }), false);
   assert.equal(termStarted({ season: 'spring', year: 2025 }, { now }), true);
+});
+
+test('a season word that is something else is no term', () => {
+  assert.equal(termFromTitle('Graduate Programme - Engineer [Java (Spring, J2EE)]', { now }), null);
+  assert.equal(termFromTitle('Spring Boot Developer Intern', { now }), null);
+  assert.equal(termFromTitle('Java/Spring Intern', { now }), null);
+  assert.equal(termFromTitle('Software Intern, Spring, TX', { now }), null);
+  assert.equal(termFromTitle('Intern - Winter Park', { now }), null);
+  assert.equal(termFromTitle('Fall Protection Engineering Intern', { now }), null);
+  // Still a term, however it is put.
+  assert.deepEqual(termFromTitle('Summer Software Engineering Intern', { now }), { season: 'summer', year: 2027 });
+  assert.deepEqual(termFromTitle('Software Engineering Co-op (Spring/Summer 2027)', { now }), { season: 'summer', year: 2027 });
+  assert.deepEqual(termFromTitle('Java Developer Intern - Spring 2027', { now }), { season: 'spring', year: 2027 });
+  assert.deepEqual(termFromTitle('Software Engineer Intern - Java - Summer 2027', { now }), { season: 'summer', year: 2027 });
+  assert.deepEqual(termFromTitle('Software Engineer Intern - Java - Spring 2027', { now }), { season: 'spring', year: 2027 });
+});
+
+test('when a student graduates is no term, and neither is a requisition', () => {
+  assert.equal(termFromTitle('Software Engineering Intern (Grad Year: Winter 2027)', { now }), null);
+  assert.equal(termFromTitle('R&D Engineer Co-op - Students Graduating in 2029 ONLY', { now }), null);
+  assert.equal(termFromTitle('Rotation Intern - 2028 Graduates', { now }), null);
+  assert.equal(termFromTitle('Software Intern, Class of 2027', { now }), null);
+  assert.deepEqual(termFromTitle('Summer 2027 Intern, Class of 2028', { now }), { season: 'summer', year: 2027 });
+  assert.deepEqual(termFromTitle('2027 Graduate Programme', { now }), { season: '', year: 2027 });
+  assert.equal(termFromTitle('Software Intern R-2027', { now }), null);
+  assert.equal(termFromTitle('Software Intern (2027-1138)', { now }), null);
+});
+
+test('a season with no year asks for the first one not begun', () => {
+  assert.equal(nextTermYear('summer', { now }), 2027);
+  assert.equal(nextTermYear('winter', { now }), 2026);
+  assert.equal(nextTermYear('summer', { now: new Date('2027-03-01T00:00:00Z') }), 2027);
 });
