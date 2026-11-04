@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { nextTermYear, termFromSlug, termFromTitle, termLabel, termSlug, termStarted } from './term.js';
+import { nextTermYear, termEnd, termFromSlug, termFromTitle, termLabel, termSlug, termStarted } from './term.js';
 
 const now = new Date('2026-11-02T00:00:00Z');
 
@@ -71,4 +71,24 @@ test('a season with no year asks for the first one not begun', () => {
   assert.equal(nextTermYear('summer', { now }), 2027);
   assert.equal(nextTermYear('winter', { now }), 2026);
   assert.equal(nextTermYear('summer', { now: new Date('2027-03-01T00:00:00Z') }), 2027);
+});
+
+test('a title naming several terms with their years is for the last of them', () => {
+  assert.deepEqual(termFromTitle('Software Engineer Intern (Fall 2025/Summer 2026)'), { season: 'summer', year: 2026 });
+  assert.deepEqual(termFromTitle('R&D Intern (Fall 2026/Spring-Summer 2027)'), { season: 'summer', year: 2027 });
+  assert.deepEqual(termFromTitle('Intern, Autumn 2026 or Spring 2026'), { season: 'fall', year: 2026 });
+});
+
+test('one term named stays as it read, a season shared by one year too', () => {
+  const now = new Date(Date.UTC(2026, 10, 4));
+  assert.deepEqual(termFromTitle('AI Internship (Winter or Summer 2026)', { now }), { season: 'summer', year: 2026 });
+  assert.deepEqual(termFromTitle('Intern (Fall/Winter 2026)', { now }), { season: 'fall', year: 2026 });
+});
+
+test('a term ends four months after it starts, and a bare year with the year', () => {
+  assert.equal(termEnd({ season: 'summer', year: 2026 }).toISOString().slice(0, 10), '2026-10-01');
+  assert.equal(termEnd({ season: 'spring', year: 2026 }).toISOString().slice(0, 10), '2026-07-01');
+  assert.equal(termEnd({ season: 'fall', year: 2026 }).toISOString().slice(0, 10), '2027-01-01');
+  assert.equal(termEnd({ season: 'winter', year: 2026 }).toISOString().slice(0, 10), '2027-04-01');
+  assert.equal(termEnd({ season: '', year: 2026 }).toISOString().slice(0, 10), '2027-01-01');
 });

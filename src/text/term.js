@@ -18,6 +18,10 @@ const NOT_A_TERM_AFTER = /^\s*(?:boot|framework|mvc|cloud|security|data|batch|we
 const NOT_A_TERM_BEFORE = /(?:java|j2ee|jpa|kotlin|hibernate|react|angular|rest|sql|microservices)\s*[,/&+(-]*\s*\(?\s*$/i;
 const NOT_A_TERM_STATE = /^,\s*[A-Z]{2}\b/;
 
+// Each season named with its year, for a title that names several terms.
+const SEASON_AND_YEAR = new RegExp(String.raw`\b(${SEASON})\s*(20[2-3]\d)\b`, 'gi');
+const seasonOf = (word) => (word.toLowerCase() === 'autumn' ? 'fall' : word.toLowerCase());
+
 const namesSeason = (text, name) =>
   [...text.matchAll(SEASON_WORDS[name])].some((m) => {
     const before = text.slice(0, m.index);
@@ -34,6 +38,9 @@ const namesSeason = (text, name) =>
  */
 export function termFromTitle(title, { now = new Date() } = {}) {
   const text = String(title || '').replace(GRADUATION, ' ');
+  // "Fall 2025/Summer 2026": the last of them is the one a posting can still be for.
+  const terms = [...text.matchAll(SEASON_AND_YEAR)].map((m) => ({ season: seasonOf(m[1]), year: Number(m[2]) }));
+  if (terms.length > 1) return terms.reduce((late, term) => (termStart(term) > termStart(late) ? term : late));
   const season = SEASONS.find((name) => namesSeason(text, name)) || '';
   const named = text.match(YEAR);
   if (!season && !named) return null;
@@ -47,6 +54,12 @@ export const nextTermYear = (season, { now = new Date() } = {}) => (termStarted(
 
 /** The first day of the month a season's term starts. */
 export const termStart = ({ season, year }) => new Date(Date.UTC(year, STARTS[season] ?? 0, 1));
+
+// How long a season's term runs from its start, generously: a co-op can run four months.
+const TERM_MONTHS = 4;
+
+/** The first day after a term: four months on from its start, or the next year for a bare year. */
+export const termEnd = ({ season, year }) => (season ? new Date(Date.UTC(year, STARTS[season] + TERM_MONTHS, 1)) : new Date(Date.UTC(year + 1, 0, 1)));
 
 /** Whether a season's term has begun by `now`: an internship for it is no longer one to apply to. */
 export function termStarted({ season, year }, { now = new Date() } = {}) {
