@@ -15,4 +15,5 @@ export const PROMPT_VERSIONS = {
   jobEnrich: 'jobEnrich.v17',
   screeningInterpret: 'screeningInterpret.v1',
   resumeReview: 'resumeReview.v1',
+  resumeImprove: 'resumeImprove.v1',
 };
