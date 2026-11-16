@@ -5,7 +5,7 @@ export default [
   { ignores: ['node_modules/**'] },
   js.configs.recommended,
   {
-    files: ['src/**/*.js', 'examples/**/*.js'],
+    files: ['src/**/*.js', 'examples/**/*.js', 'eval/**/*.js'],
     languageOptions: {
       ecmaVersion: 2024,
       sourceType: 'module',
@@ -18,7 +18,7 @@ export default [
     },
   },
   {
-    files: ['src/**/*.test.js', 'examples/**/*.js'],
+    files: ['src/**/*.test.js', 'examples/**/*.js', 'eval/**/*.js'],
     rules: { 'no-console': 'off' },
   },
   {

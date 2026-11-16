@@ -12,7 +12,7 @@
     "./checks/*": "./src/checks/*"
   },
   "scripts": {
-    "lint": "eslint src examples",
+    "lint": "eslint src examples eval",
     "test": "node --test \"src/**/*.test.js\""
   },
   "engines": {
